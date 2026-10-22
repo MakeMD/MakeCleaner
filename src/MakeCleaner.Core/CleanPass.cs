@@ -41,7 +41,7 @@ public class CleanPass(Settings settings)
     }
 
     public string AnalyzeSummary() =>
-        $"Analysis complete: {Files.Count} files, {MainForm.Fmt(Files.Sum(f => f.Length))} to be removed, {RegKeys.Count} registry entries"
+        $"Analysis complete: {Files.Count} files, {Bytes.Fmt(Files.Sum(f => f.Length))} to be removed, {RegKeys.Count} registry entries"
         + (Actions.Count > 0 ? $", {Actions.Count} other items" : "")
         + (BrowserRows.Count > 0 ? $", {BrowserRows.Sum(a => a.Count)} browser entries" : "")
         + (Wipe ? " + free space wipe" : "");
@@ -56,7 +56,7 @@ public class CleanPass(Settings settings)
     public string Clean(ISet<string> skip, IProgress<string>? wipeProgress = null)
     {
         bool Skipped(string ruleName) => skip.Any(b => ruleName.StartsWith(b + ": ", StringComparison.Ordinal));
-        var passes = settings.GetInt(OptionsPanel.SecureDeleteKey, 0);
+        var passes = settings.GetInt(SecureDelete.SettingKey, 0);
         // a skipped browser keeps its files; everything else goes as analyzed
         var keep = Scanned.Where(r => Skipped(r.Name)).SelectMany(Engine.Analyze).Select(f => f.FullName).ToHashSet(StringComparer.OrdinalIgnoreCase);
         var r = Engine.Clean(Files.Where(f => !keep.Contains(f.FullName)), passes);
@@ -74,7 +74,7 @@ public class CleanPass(Settings settings)
             }
             catch (Exception e) when (e is IOException or UnauthorizedAccessException) { wiped = ", free space wipe failed: " + e.Message; }
         Files = []; RegKeys = []; Actions = []; BrowserRows = [];
-        return $"Cleaning complete: {r.Deleted} files removed, {MainForm.Fmt(r.BytesFreed)} freed, {r.Skipped} skipped (in use), {rr.Deleted} registry entries removed, {rr.Skipped} skipped"
+        return $"Cleaning complete: {r.Deleted} files removed, {Bytes.Fmt(r.BytesFreed)} freed, {r.Skipped} skipped (in use), {rr.Deleted} registry entries removed, {rr.Skipped} skipped"
             + (ra.Deleted + ra.Skipped > 0 ? $", {ra.Deleted} other items done" + (ra.Skipped > 0 ? $" ({ra.Skipped} failed)" : "") : "")
             + (rb > 0 ? $", {rb} browser entries removed" : "")
             + (skip.Count > 0 ? $", skipped running: {string.Join(", ", skip)}" : "") + wiped;

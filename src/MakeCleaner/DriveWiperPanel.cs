@@ -1,7 +1,3 @@
-using System.Diagnostics;
-using System.Runtime.InteropServices;
-using Microsoft.Win32.SafeHandles;
-
 namespace MakeCleaner;
 
 // Tools > Drive Wiper: wipe free space, or format + wipe a whole non-system drive.
@@ -29,8 +25,8 @@ public class DriveWiperPanel : UserControl
         foreach (var d in DriveInfo.GetDrives().Where(d => d.IsReady && d.DriveType is DriveType.Fixed or DriveType.Removable))
         {
             list.Add(d);
-            ssd[d.Name] = IsSsd(d.Name);
-            var tags = (IsSystemDrive(d.Name) ? " (System)" : "") + (ssd[d.Name] == true ? " [SSD]" : "");
+            ssd[d.Name] = DriveWiper.IsSsd(d.Name);
+            var tags = (DriveWiper.IsSystemDrive(d.Name) ? " (System)" : "") + (ssd[d.Name] == true ? " [SSD]" : "");
             drives.Items.Add($"{d.Name}{tags}  {d.VolumeLabel}  {d.DriveFormat}  {Gb(d.AvailableFreeSpace)} free of {Gb(d.TotalSize)}");
         }
 
@@ -70,9 +66,9 @@ public class DriveWiperPanel : UserControl
 
         if (Entire)
         {
-            var refused = targets.Select(d => CheckErasable(d.Name, SystemRoot, Path.GetPathRoot(AppContext.BaseDirectory)!)).FirstOrDefault(r => r != null);
+            var refused = targets.Select(d => DriveWiper.CheckErasable(d.Name, DriveWiper.SystemRoot, Path.GetPathRoot(AppContext.BaseDirectory)!)).FirstOrDefault(r => r != null);
             if (refused != null) { MessageBox.Show(this, refused, "Drive Wiper", MessageBoxButtons.OK, MessageBoxIcon.Stop); return; }
-            if (!Elevated.Require(this, "Erasing an entire drive")) return;
+            if (!ElevatedUi.Require(this, "Erasing an entire drive")) return;
             var names = string.Join(", ", targets.Select(d => d.Name));
             if (Prompt($"All data on {names} will be permanently erased.\nType {ConfirmWord} to continue:") != ConfirmWord) return;
         }
@@ -91,9 +87,9 @@ public class DriveWiperPanel : UserControl
                 if (Entire)
                 {
                     ((IProgress<string>)report).Report($"Formatting {root}");
-                    await Task.Run(() => Format(d));
+                    await Task.Run(() => DriveWiper.Format(d));
                 }
-                await Task.Run(() => SecureDelete.WipeFreeSpace(WipeDir(root), n,
+                await Task.Run(() => SecureDelete.WipeFreeSpace(DriveWiper.WipeDir(root), n,
                     new Progress<string>(s => ((IProgress<string>)report).Report($"Erasing {root}: {s}")), cts.Token));
             }
             progress.Text = "Drive Wiper complete.";
@@ -101,32 +97,6 @@ public class DriveWiperPanel : UserControl
         catch (OperationCanceledException) { progress.Text = "Cancelled. Temporary wipe files removed."; }
         catch (Exception e) { progress.Text = "Failed: " + e.Message; }
         finally { wipe.Enabled = true; cancel.Enabled = false; cts = null; }
-    }
-
-    static string SystemRoot => Path.GetPathRoot(Environment.SystemDirectory)!;
-
-    // null = may be erased entirely; otherwise the reason it must not be.
-    public static string? CheckErasable(string root, string systemRoot, string exeRoot)
-    {
-        if (string.Equals(root, systemRoot, StringComparison.OrdinalIgnoreCase)) return $"{root} is the system drive and cannot be erased entirely.";
-        if (string.Equals(root, exeRoot, StringComparison.OrdinalIgnoreCase)) return $"MakeCleaner is running from {root}; it cannot erase its own drive.";
-        return null;
-    }
-
-    static bool IsSystemDrive(string root) => string.Equals(root, SystemRoot, StringComparison.OrdinalIgnoreCase);
-
-    // The system drive root needs admin to write to; %TEMP% lives on the same volume, so wipe through it.
-    static string WipeDir(string root) =>
-        string.Equals(root, Path.GetPathRoot(Path.GetTempPath()), StringComparison.OrdinalIgnoreCase) ? Path.GetTempPath() : root;
-
-    static void Format(DriveInfo d)
-    {
-        var label = d.VolumeLabel.Replace("'", "''");
-        var cmd = $"$ErrorActionPreference='Stop'; Format-Volume -DriveLetter {d.Name[0]} -FileSystem {d.DriveFormat} -NewFileSystemLabel '{label}' -Force -Confirm:$false | Out-Null";
-        using var p = Process.Start(new ProcessStartInfo("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", cmd])
-            { CreateNoWindow = true, UseShellExecute = false })!;
-        p.WaitForExit();
-        if (p.ExitCode != 0) throw new IOException($"Formatting {d.Name} failed (exit {p.ExitCode}).");
     }
 
     static string? Prompt(string text)
@@ -142,24 +112,4 @@ public class DriveWiperPanel : UserControl
     }
 
     static string Gb(long b) => $"{b / (double)(1L << 30):0.#} GB";
-
-    // true = SSD, false = spinning disk, null = unknown (treated like SSD for the warning).
-    static bool? IsSsd(string root)
-    {
-        using var h = CreateFileW($@"\\.\{root[0]}:", 0, 3, IntPtr.Zero, 3, 0, IntPtr.Zero);
-        if (h.IsInvalid) return null;
-        var q = new StoragePropertyQuery { PropertyId = 7 }; // StorageDeviceSeekPenaltyProperty
-        return DeviceIoControl(h, 0x2D1400, ref q, Marshal.SizeOf<StoragePropertyQuery>(), out SeekPenalty r,
-            Marshal.SizeOf<SeekPenalty>(), out _, IntPtr.Zero) ? !r.IncursSeekPenalty : null;
-    }
-
-    [StructLayout(LayoutKind.Sequential)] struct StoragePropertyQuery { public int PropertyId, QueryType; public byte Extra; }
-    [StructLayout(LayoutKind.Sequential)] struct SeekPenalty { public int Version, Size; [MarshalAs(UnmanagedType.U1)] public bool IncursSeekPenalty; }
-
-    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
-    static extern SafeFileHandle CreateFileW(string name, uint access, uint share, IntPtr sa, uint disposition, uint flags, IntPtr template);
-
-    [DllImport("kernel32.dll", SetLastError = true)]
-    static extern bool DeviceIoControl(SafeFileHandle h, uint code, ref StoragePropertyQuery inBuf, int inSize,
-        out SeekPenalty outBuf, int outSize, out int returned, IntPtr overlapped);
 }

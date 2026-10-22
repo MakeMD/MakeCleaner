@@ -18,7 +18,7 @@ New-Item -ItemType Directory -Force (Join-Path $tmp 'sub'), $noApps | Out-Null
 'a', 'sub\b' | ForEach-Object { [IO.File]::WriteAllBytes((Join-Path $tmp "$_.tmp"), (New-Object byte[] 1024)) }
 Set-Content (Join-Path $bin 'portable.dat') '#PORTABLE#'
 # Only Temporary Files on (Wipe Free Space on too: /auto must ignore it).
-$names = Select-String -Path (Join-Path $root 'src\MakeCleaner\rules\Windows.ini') -Pattern '^\[(.+)\]$' | ForEach-Object { $_.Matches[0].Groups[1].Value }
+$names = Select-String -Path (Join-Path $root 'src\MakeCleaner.Core\rules\Windows.ini') -Pattern '^\[(.+)\]$' | ForEach-Object { $_.Matches[0].Groups[1].Value }
 Set-Content (Join-Path $bin 'MakeCleaner.ini') (@('[Options]', 'Custom Files and Folders=False') + ($names | ForEach-Object { "$_=" + ($_ -in 'Temporary Files', 'Wipe Free Space') }))
 $log = Join-Path $bin 'MakeCleaner-auto.log'
 Remove-Item $log -ErrorAction SilentlyContinue

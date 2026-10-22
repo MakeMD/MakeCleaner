@@ -20,17 +20,6 @@ public static class Elevated
         catch (Win32Exception) { return false; }
     }
 
-    // Ask, relaunch elevated, close this copy. Returns false when not elevated and nothing happened.
-    public static bool Require(IWin32Window owner, string what)
-    {
-        if (IsAdmin) return true;
-        if (MessageBox.Show(owner, $"{what} requires administrator rights. Restart MakeCleaner as administrator?",
-                "MakeCleaner", MessageBoxButtons.OKCancel, MessageBoxIcon.Information) == DialogResult.OK
-            && RelaunchAsAdmin())
-            Application.Exit();
-        return false;
-    }
-
     // Runs a system tool elevated (UAC prompt only now). False if the user declined or the tool failed.
     public static bool Run(string exe, string args)
     {

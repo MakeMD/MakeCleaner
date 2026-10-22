@@ -66,9 +66,9 @@ public class SecureDeleteTests : IDisposable
     [Fact]
     public void System_drive_and_own_drive_cannot_be_erased_entirely()
     {
-        Assert.NotNull(DriveWiperPanel.CheckErasable(@"C:\", @"C:\", @"D:\"));
-        Assert.NotNull(DriveWiperPanel.CheckErasable(@"d:\", @"C:\", @"D:\"));
-        Assert.Null(DriveWiperPanel.CheckErasable(@"E:\", @"C:\", @"D:\"));
+        Assert.NotNull(DriveWiper.CheckErasable(@"C:\", @"C:\", @"D:\"));
+        Assert.NotNull(DriveWiper.CheckErasable(@"d:\", @"C:\", @"D:\"));
+        Assert.Null(DriveWiper.CheckErasable(@"E:\", @"C:\", @"D:\"));
     }
 
     [Fact]
@@ -76,17 +76,17 @@ public class SecureDeleteTests : IDisposable
     {
         RestorePoint P(uint s) => new(s, "rp" + s, DateTime.UtcNow);
         var all = new[] { P(10), P(12), P(11) };
-        Assert.False(RestorePanel.CanRemove(all[1], all));
-        Assert.True(RestorePanel.CanRemove(all[0], all));
-        Assert.Equal(new DateTime(2026, 10, 22, 8, 15, 0, DateTimeKind.Utc), RestorePanel.ParseCim("20261022081500.000000-000"));
+        Assert.False(RestorePoints.CanRemove(all[1], all));
+        Assert.True(RestorePoints.CanRemove(all[0], all));
+        Assert.Equal(new DateTime(2026, 10, 22, 8, 15, 0, DateTimeKind.Utc), RestorePoints.ParseCim("20261022081500.000000-000"));
     }
 
     [Fact]
     public void Restore_points_list_reads_wmi_or_asks_for_admin() // read-only query of the real machine
     {
         if (!Environment.IsPrivilegedProcess)
-            Assert.Throws<UnauthorizedAccessException>(() => RestorePanel.List());
+            Assert.Throws<UnauthorizedAccessException>(() => RestorePoints.List());
         else
-            Assert.All(RestorePanel.List(), p => Assert.True(p.Seq > 0 && p.Created.Year > 2000));
+            Assert.All(RestorePoints.List(), p => Assert.True(p.Seq > 0 && p.Created.Year > 2000));
     }
 }

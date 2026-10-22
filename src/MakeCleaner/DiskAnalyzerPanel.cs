@@ -44,10 +44,10 @@ public class DiskAnalyzerPanel : UserControl
         cats.BeginUpdate();
         cats.Items.Clear();
         foreach (var c in DiskAnalyzer.Categories)
-            cats.Items.Add(new ListViewItem([c, r.ByCategory[c].Count.ToString("N0"), MainForm.Fmt(r.Bytes(c)),
+            cats.Items.Add(new ListViewItem([c, r.ByCategory[c].Count.ToString("N0"), Bytes.Fmt(r.Bytes(c)),
                 r.Total == 0 ? "0" : $"{100.0 * r.Bytes(c) / r.Total:0.#}"]) { Tag = c });
         cats.EndUpdate();
-        status.Text = $"Analysis complete: {r.ByCategory.Values.Sum(l => l.Count):N0} files, {MainForm.Fmt(r.Total)}";
+        status.Text = $"Analysis complete: {r.ByCategory.Values.Sum(l => l.Count):N0} files, {Bytes.Fmt(r.Total)}";
         if (cats.Items.Count > 0) cats.Items[0].Selected = true;
     }
 
@@ -58,7 +58,7 @@ public class DiskAnalyzerPanel : UserControl
         if (report != null && cats.SelectedItems.Count > 0)
             // ponytail: biggest 5000 per type; virtual mode if the full list is ever needed
             foreach (var f in report.ByCategory[(string)cats.SelectedItems[0].Tag!].OrderByDescending(f => f.Length).Take(5000))
-                files.Items.Add(new ListViewItem([f.Name, MainForm.Fmt(f.Length), f.DirectoryName ?? "", f.LastWriteTime.ToString("g")]) { Tag = f });
+                files.Items.Add(new ListViewItem([f.Name, Bytes.Fmt(f.Length), f.DirectoryName ?? "", f.LastWriteTime.ToString("g")]) { Tag = f });
         files.EndUpdate();
     }
 
@@ -73,7 +73,7 @@ public class DiskAnalyzerPanel : UserControl
         var cat = cats.SelectedIndices.Count > 0 ? cats.SelectedIndices[0] : 0;
         Show(report);
         cats.Items[cat].Selected = true;
-        status.Text = $"Deleted {r.Deleted} files, {MainForm.Fmt(r.BytesFreed)} freed, {r.Skipped} skipped";
+        status.Text = $"Deleted {r.Deleted} files, {Bytes.Fmt(r.BytesFreed)} freed, {r.Skipped} skipped";
     }
 
     void Save()

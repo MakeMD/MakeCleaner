@@ -3,7 +3,6 @@ namespace MakeCleaner;
 // Options section. Saved immediately on change.
 public class OptionsPanel : UserControl
 {
-    public const string SecureDeleteKey = "SecureDeletePasses";
     static readonly string[] IncludeModes = ["Files only", "Files and subfolders", "Files, subfolders and the folder itself"];
     static readonly string[] ExcludeKinds = ["Folder", "File", "Registry key"];
 
@@ -14,11 +13,11 @@ public class OptionsPanel : UserControl
         this.settings = settings;
         var method = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 320, Name = "secureDelete" };
         foreach (var m in SecureDelete.Methods) method.Items.Add(m.Label);
-        var current = settings.GetInt(SecureDeleteKey, 0);
+        var current = settings.GetInt(SecureDelete.SettingKey, 0);
         method.SelectedIndex = Math.Max(0, Array.FindIndex(SecureDelete.Methods, m => m.Passes == current));
         method.SelectedIndexChanged += (_, _) =>
         {
-            settings.Set(SecureDeleteKey, SecureDelete.Methods[method.SelectedIndex].Passes);
+            settings.Set(SecureDelete.SettingKey, SecureDelete.Methods[method.SelectedIndex].Passes);
             settings.Save();
         };
 

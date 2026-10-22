@@ -11,6 +11,7 @@ namespace MakeCleaner;
 // and MFT-resident tiny files can keep old copies; MFT free space and cluster tips are not wiped.
 public static class SecureDelete
 {
+    public const string SettingKey = "SecureDeletePasses"; // Settings key: passes for every clean, 0 = normal delete
     public static readonly (int Passes, string Label)[] Methods =
     [
         (0, "Normal file deletion (faster)"),

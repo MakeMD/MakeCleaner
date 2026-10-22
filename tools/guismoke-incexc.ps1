@@ -20,7 +20,7 @@ foreach ($rel in 'a.log', 'b.log', 'private\c.log') {
 }
 Set-Content (Join-Path $bin 'portable.dat') '#PORTABLE#'
 # Windows-tab rules default on would scan real user data: turn all off except Custom Files and Folders.
-$names = Select-String -Path (Join-Path $root 'src\MakeCleaner\rules\Windows.ini') -Pattern '^\[(.+)\]$' | ForEach-Object { $_.Matches[0].Groups[1].Value }
+$names = Select-String -Path (Join-Path $root 'src\MakeCleaner.Core\rules\Windows.ini') -Pattern '^\[(.+)\]$' | ForEach-Object { $_.Matches[0].Groups[1].Value }
 Set-Content $ini (@('[Options]', 'Custom Files and Folders=True') + ($names | ForEach-Object { "$_=" + ($_ -eq 'Custom Files and Folders') }))
 
 function ById($w, $id) { $w.FindFirst($TS::Descendants, (New-Object System.Windows.Automation.PropertyCondition($AT::AutomationIdProperty, $id))) }

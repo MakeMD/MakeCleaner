@@ -37,7 +37,7 @@ if ($LASTEXITCODE -ne 0) { throw 'could not build fixture databases (python sqli
 function Hosts($db, $table, $col) { (& python -I (Join-Path $pyDir 'hosts.py') $db $table $col).Trim() }
 
 Set-Content (Join-Path $bin 'portable.dat') '#PORTABLE#'
-$names = Select-String -Path (Join-Path $root 'src\MakeCleaner\rules\Windows.ini') -Pattern '^\[(.+)\]$' | ForEach-Object { $_.Matches[0].Groups[1].Value }
+$names = Select-String -Path (Join-Path $root 'src\MakeCleaner.Core\rules\Windows.ini') -Pattern '^\[(.+)\]$' | ForEach-Object { $_.Matches[0].Groups[1].Value }
 Set-Content (Join-Path $bin 'MakeCleaner.ini') (@('[Options]', 'Custom Files and Folders=False', 'KeepCookie1=example.com') + ($names | ForEach-Object { "$_=False" }))
 
 function Find($w, $prop, $val) { $w.FindFirst($Desc, (New-Object System.Windows.Automation.PropertyCondition($prop, $val))) }

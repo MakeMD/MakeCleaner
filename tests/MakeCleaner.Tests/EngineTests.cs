@@ -93,25 +93,45 @@ public class EngineTests : IDisposable
         Assert.True(File.Exists(Path.Combine(dir, Settings.FileName)));
     }
 
+    // The WinForms app's build folder (the test project builds it but does not reference it).
+    internal static readonly string AppDir = typeof(EngineTests).Assembly.GetCustomAttributes<AssemblyMetadataAttribute>().Single(a => a.Key == "AppDir").Value!;
+
+    // Assembly references read from metadata only, so nothing gets loaded into the test process.
+    static string[] References(string dll)
+    {
+        using var pe = new System.Reflection.PortableExecutable.PEReader(File.OpenRead(dll));
+        var md = System.Reflection.Metadata.PEReaderExtensions.GetMetadataReader(pe);
+        return [.. md.AssemblyReferences.Select(h => md.GetString(md.GetAssemblyReference(h).Name))];
+    }
+
     [Fact]
     public void No_shipped_assembly_references_networking()
     {
-        // Walk MakeCleaner.dll and every app-local dependency it pulls in (Microsoft.Data.Sqlite, SQLitePCLRaw ...):
-        // exactly the managed set that ships next to / inside the published exe. Framework assemblies live elsewhere.
-        var dir = AppContext.BaseDirectory;
-        var queue = new Queue<string>([Path.Combine(dir, "MakeCleaner.dll")]);
+        // Walk the app exe's MakeCleaner.dll and every app-local dependency it pulls in (MakeCleaner.Core, Microsoft.Data.Sqlite,
+        // SQLitePCLRaw ...): exactly the managed set that ships next to / inside the published exe. Framework assemblies live elsewhere.
+        var queue = new Queue<string>([Path.Combine(AppDir, "MakeCleaner.dll")]);
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         while (queue.TryDequeue(out var path))
         {
             if (!seen.Add(path)) continue;
-            foreach (var r in Assembly.LoadFrom(path).GetReferencedAssemblies())
+            foreach (var r in References(path))
             {
-                Assert.False(r.Name!.StartsWith("System.Net", StringComparison.OrdinalIgnoreCase), $"{Path.GetFileName(path)} references {r.Name}");
-                var local = Path.Combine(dir, r.Name + ".dll");
+                Assert.False(r.StartsWith("System.Net", StringComparison.OrdinalIgnoreCase), $"{Path.GetFileName(path)} references {r}");
+                var local = Path.Combine(AppDir, r + ".dll");
                 if (File.Exists(local)) queue.Enqueue(local);
             }
         }
+        Assert.Contains(seen, p => p.EndsWith("MakeCleaner.Core.dll", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(seen, p => p.EndsWith("Microsoft.Data.Sqlite.dll", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(seen, p => p.EndsWith("SQLitePCLRaw.core.dll", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void Core_has_no_ui_framework()
+    {
+        static bool Ui(string r) => r.StartsWith("System.Windows.Forms", StringComparison.OrdinalIgnoreCase)
+            || r is "PresentationFramework" or "PresentationCore" or "WindowsBase" or "System.Xaml";
+        Assert.DoesNotContain(References(typeof(Engine).Assembly.Location), Ui);
+        Assert.Contains(References(Path.Combine(AppDir, "MakeCleaner.dll")), Ui); // the check itself sees UI references
     }
 }

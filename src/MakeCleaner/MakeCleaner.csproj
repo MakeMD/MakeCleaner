@@ -14,14 +14,11 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <None Remove="rules\Windows.ini" />
-    <EmbeddedResource Include="rules\Windows.ini" LogicalName="Windows.ini" />
-    <None Update="rules\**" CopyToOutputDirectory="PreserveNewest" />
     <None Include="..\..\THIRD-PARTY-NOTICES.txt" Link="THIRD-PARTY-NOTICES.txt" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.13" />
+    <ProjectReference Include="..\MakeCleaner.Core\MakeCleaner.Core.csproj" />
   </ItemGroup>
 
 </Project>

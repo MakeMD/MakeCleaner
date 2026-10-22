@@ -66,14 +66,14 @@ public class DuplicatesPanel : UserControl
         // ponytail: capped at 2000 groups; virtual mode if someone has more
         foreach (var (g, i) in r.Groups.OrderByDescending(g => g[0].Length * (g.Count - 1)).Take(2000).Select((g, i) => (g, i)))
         {
-            var group = new ListViewGroup($"#{i + 1}: {g.Count} x {MainForm.Fmt(g[0].Length)}");
+            var group = new ListViewGroup($"#{i + 1}: {g.Count} x {Bytes.Fmt(g[0].Length)}");
             list.Groups.Add(group);
             foreach (var f in g)
-                list.Items.Add(new ListViewItem([f.Name, f.DirectoryName ?? "", MainForm.Fmt(f.Length), f.LastWriteTime.ToString("g")], group) { Tag = f });
+                list.Items.Add(new ListViewItem([f.Name, f.DirectoryName ?? "", Bytes.Fmt(f.Length), f.LastWriteTime.ToString("g")], group) { Tag = f });
         }
         list.EndUpdate();
         var wasted = r.Groups.Sum(g => g[0].Length * (g.Count - 1));
-        status.Text = $"Found {r.Groups.Count} duplicate groups, {r.Groups.Sum(g => g.Count)} files, {MainForm.Fmt(wasted)} reclaimable";
+        status.Text = $"Found {r.Groups.Count} duplicate groups, {r.Groups.Sum(g => g.Count)} files, {Bytes.Fmt(wasted)} reclaimable";
     }
 
     void Delete()
@@ -82,6 +82,6 @@ public class DuplicatesPanel : UserControl
         if (items.Count == 0 || !ToolsUi.ConfirmDelete(this, items.Count)) return;
         var r = Engine.Clean(items.Select(i => (FileInfo)i.Tag!));
         foreach (var i in items.Where(i => !((FileInfo)i.Tag!).Exists)) list.Items.Remove(i);
-        status.Text = $"Deleted {r.Deleted} files, {MainForm.Fmt(r.BytesFreed)} freed, {r.Skipped} skipped";
+        status.Text = $"Deleted {r.Deleted} files, {Bytes.Fmt(r.BytesFreed)} freed, {r.Skipped} skipped";
     }
 }

@@ -57,7 +57,7 @@ public class ScheduleTests : IDisposable
     public void Auto_cleans_saved_items_without_a_window_and_logs()
     {
         var app = Path.Combine(dir, "app");
-        CopyApp(AppContext.BaseDirectory, app);
+        CopyApp(EngineTests.AppDir, app);
         File.WriteAllText(Path.Combine(app, "portable.dat"), "#PORTABLE#");
         var names = Rule.ParseIni(Engine.BuiltInRules).Select(r => r.Name);
         // Wipe Free Space ticked on purpose: /auto must ignore it

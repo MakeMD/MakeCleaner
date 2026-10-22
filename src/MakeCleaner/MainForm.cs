@@ -148,11 +148,11 @@ public class MainForm : Form
         results.Items.Clear();
         // ponytail: ListView capped at 5000 rows; virtual mode if lists get huge
         foreach (var f in pass.Files.Take(5000))
-            results.Items.Add(new ListViewItem([f.FullName, Fmt(f.Length)]));
+            results.Items.Add(new ListViewItem([f.FullName, Bytes.Fmt(f.Length)]));
         foreach (var t in pass.RegKeys.Take(5000))
             results.Items.Add(new ListViewItem([t.ToString(), ""]));
         foreach (var a in pass.Actions)
-            results.Items.Add(new ListViewItem([a.Label, a.Bytes > 0 ? Fmt(a.Bytes) : ""]));
+            results.Items.Add(new ListViewItem([a.Label, a.Bytes > 0 ? Bytes.Fmt(a.Bytes) : ""]));
         foreach (var (i, n) in pass.BrowserRows)
             results.Items.Add(new ListViewItem([i.Key, $"{n} entries"]));
         results.EndUpdate();
@@ -188,12 +188,4 @@ public class MainForm : Form
         foreach (var n in Leaves(browsers)) settings.Set(((BrowserItem)n.Tag!).Key, n.Checked);
         settings.Save();
     }
-
-    internal static string Fmt(long b) => b switch
-    {
-        >= 1L << 30 => $"{b / (double)(1L << 30):0.##} GB",
-        >= 1L << 20 => $"{b / (double)(1L << 20):0.##} MB",
-        >= 1L << 10 => $"{b / 1024.0:0.##} KB",
-        _ => $"{b} B",
-    };
 }
