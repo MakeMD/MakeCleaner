@@ -1,0 +1,27 @@
+MakeCleaner - third-party notices
+==================================
+
+MakeCleaner contains no telemetry, no ads and makes no network connections.
+It ships the following third-party components:
+
+1. Winapp2.ini (rules\Winapp2.ini)
+   By the Winapp2 project - https://github.com/MoscaDotTo/Winapp2
+   License: Creative Commons Attribution-ShareAlike 4.0 International (CC BY-SA 4.0)
+   https://creativecommons.org/licenses/by-sa/4.0/
+   Shipped unmodified (Non-CCleaner flavor). The license covers only this data file,
+   not the MakeCleaner program. See rules\README.md.
+
+2. .NET runtime and Windows Forms (bundled into MakeCleaner.exe)
+   Copyright (c) .NET Foundation and Contributors
+   License: MIT - https://github.com/dotnet/runtime/blob/main/LICENSE.TXT
+
+3. Microsoft.Data.Sqlite, Microsoft.Data.Sqlite.Core
+   Copyright (c) .NET Foundation and Contributors
+   License: MIT - https://github.com/dotnet/efcore/blob/main/LICENSE.txt
+
+4. SQLitePCLRaw (core, provider.e_sqlite3, bundle_e_sqlite3, lib.e_sqlite3)
+   Copyright (c) Eric Sink / SourceGear
+   License: Apache License 2.0 - https://github.com/ericsink/SQLitePCL.raw/blob/master/LICENSE.TXT
+
+5. SQLite (e_sqlite3.dll)
+   Public domain - https://www.sqlite.org/copyright.html

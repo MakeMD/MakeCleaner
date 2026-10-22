@@ -3,3 +3,4 @@ re/sample/
 bin/
 obj/
 .vs/
+dist/

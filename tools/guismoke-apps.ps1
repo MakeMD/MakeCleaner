@@ -1,10 +1,10 @@
 # GUI smoke for the Applications tab: portable mode, TEMP pointed at a fixture, waits for app detection,
 # opens the Applications tab, ticks the first detected entry (if UIA allows) and runs Analyze ONLY.
 # Never clicks Run Cleaner. Pure ASCII (PS 5.1).
-param([int]$Screen = 1, [string]$Config = 'Debug', [string]$Shot = "$env:TEMP\makecleaner-apps-smoke.png")
+param([int]$Screen = 1, [string]$Config = 'Debug', [string]$BinDir = '', [string]$Shot = "$env:TEMP\makecleaner-apps-smoke.png")
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
-$bin = Join-Path $root "src\MakeCleaner\bin\$Config\net10.0-windows"
+$bin = if ($BinDir) { $BinDir } else { Join-Path $root "src\MakeCleaner\bin\$Config\net10.0-windows" } # -BinDir: a published copy (tools\releasecheck.ps1)
 $exe = Join-Path $bin 'MakeCleaner.exe'
 . (Join-Path $PSScriptRoot 'screenpin.ps1')
 Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes, System.Drawing

@@ -94,16 +94,24 @@ public class EngineTests : IDisposable
     }
 
     [Fact]
-    public void No_MakeCleaner_assembly_references_networking()
+    public void No_shipped_assembly_references_networking()
     {
-        var product = Directory.GetFiles(AppContext.BaseDirectory, "MakeCleaner*.dll")
-            .Where(p => !Path.GetFileName(p).Contains(".Tests"))
-            .ToList();
-        Assert.NotEmpty(product);
-        foreach (var p in product)
+        // Walk MakeCleaner.dll and every app-local dependency it pulls in (Microsoft.Data.Sqlite, SQLitePCLRaw ...):
+        // exactly the managed set that ships next to / inside the published exe. Framework assemblies live elsewhere.
+        var dir = AppContext.BaseDirectory;
+        var queue = new Queue<string>([Path.Combine(dir, "MakeCleaner.dll")]);
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        while (queue.TryDequeue(out var path))
         {
-            var refs = Assembly.LoadFrom(p).GetReferencedAssemblies().Select(a => a.Name!);
-            Assert.DoesNotContain(refs, n => n.StartsWith("System.Net", StringComparison.OrdinalIgnoreCase));
+            if (!seen.Add(path)) continue;
+            foreach (var r in Assembly.LoadFrom(path).GetReferencedAssemblies())
+            {
+                Assert.False(r.Name!.StartsWith("System.Net", StringComparison.OrdinalIgnoreCase), $"{Path.GetFileName(path)} references {r.Name}");
+                var local = Path.Combine(dir, r.Name + ".dll");
+                if (File.Exists(local)) queue.Enqueue(local);
+            }
         }
+        Assert.Contains(seen, p => p.EndsWith("Microsoft.Data.Sqlite.dll", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(seen, p => p.EndsWith("SQLitePCLRaw.core.dll", StringComparison.OrdinalIgnoreCase));
     }
 }

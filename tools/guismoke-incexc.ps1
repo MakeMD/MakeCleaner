@@ -1,10 +1,10 @@
 # GUI smoke for Options > Include / Exclude and saved checkbox states (ticket 04). Portable mode, fixture folder in TEMP.
 # Adds an Include via the UI -> Analyze sees the fixture files; adds an Exclude -> Analyze hides them; restarts the exe
 # and checks the lists and checkbox states came back. Analyze ONLY, never clicks Run Cleaner. Pure ASCII (PS 5.1).
-param([int]$Screen = 1, [string]$Config = 'Debug', [string]$ShotDir = $env:TEMP)
+param([int]$Screen = 1, [string]$Config = 'Debug', [string]$BinDir = '', [string]$ShotDir = $env:TEMP)
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
-$bin = Join-Path $root "src\MakeCleaner\bin\$Config\net10.0-windows"
+$bin = if ($BinDir) { $BinDir } else { Join-Path $root "src\MakeCleaner\bin\$Config\net10.0-windows" } # -BinDir: a published copy (tools\releasecheck.ps1)
 $exe = Join-Path $bin 'MakeCleaner.exe'
 $ini = Join-Path $bin 'MakeCleaner.ini'
 . (Join-Path $PSScriptRoot 'screenpin.ps1')

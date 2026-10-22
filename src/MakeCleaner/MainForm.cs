@@ -49,9 +49,10 @@ public class MainForm : Form
         analyze.Click += async (_, _) => await RunAnalyze();
         clean.Click += async (_, _) => await RunClean();
         about.LinkClicked += (_, _) => MessageBox.Show(this,
-            "MakeCleaner - no telemetry, no ads, no network access.\n\n" +
+            $"MakeCleaner {Application.ProductVersion}\n\nNo telemetry, no ads, no network access.\n\n" +
             "Applications rules: Winapp2.ini by the Winapp2 project (github.com/MoscaDotTo/Winapp2), " +
-            "licensed CC BY-SA 4.0, shipped unmodified in rules\\Winapp2.ini.", "About MakeCleaner");
+            "licensed CC BY-SA 4.0, shipped unmodified in rules\\Winapp2.ini.\n\n" +
+            "Third-party components: see THIRD-PARTY-NOTICES.txt next to MakeCleaner.exe.", "About MakeCleaner");
         foreach (var tree in new[] { windows, apps, browsers })
         {
             tree.BeforeCheck += ConfirmWarning;

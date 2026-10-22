@@ -7,12 +7,17 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+    <!-- the one place the version lives: About reads it, toolselease.ps1 passes it to the installer -->
+    <Version>1.0.0</Version>
+    <Product>MakeCleaner</Product>
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
   </PropertyGroup>
 
   <ItemGroup>
     <None Remove="rules\Windows.ini" />
     <EmbeddedResource Include="rules\Windows.ini" LogicalName="Windows.ini" />
     <None Update="rules\**" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\THIRD-PARTY-NOTICES.txt" Link="THIRD-PARTY-NOTICES.txt" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>
