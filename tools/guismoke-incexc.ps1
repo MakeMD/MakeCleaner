@@ -19,8 +19,9 @@ foreach ($rel in 'a.log', 'b.log', 'private\c.log') {
     [IO.File]::WriteAllBytes($p, (New-Object byte[] 1024))
 }
 Set-Content (Join-Path $bin 'portable.dat') '#PORTABLE#'
-# Temp off so the real %TEMP% is never even scanned; Custom on so the Include is analyzed.
-Set-Content $ini "[Options]`r`nTemporary Files=False`r`nCustom Files and Folders=True"
+# Windows-tab rules default on would scan real user data: turn all off except Custom Files and Folders.
+$names = Select-String -Path (Join-Path $root 'src\MakeCleaner\rules\Windows.ini') -Pattern '^\[(.+)\]$' | ForEach-Object { $_.Matches[0].Groups[1].Value }
+Set-Content $ini (@('[Options]', 'Custom Files and Folders=True') + ($names | ForEach-Object { "$_=" + ($_ -eq 'Custom Files and Folders') }))
 
 function ById($w, $id) { $w.FindFirst($TS::Descendants, (New-Object System.Windows.Automation.PropertyCondition($AT::AutomationIdProperty, $id))) }
 function Click($w, $id) { (ById $w $id).GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke() }
@@ -42,8 +43,14 @@ function Shot($w, $name) {
     [System.Drawing.Graphics]::FromImage($bmp).CopyFromScreen([int]$r.X, [int]$r.Y, 0, 0, $bmp.Size)
     $path = Join-Path $ShotDir "makecleaner-$name.png"; $bmp.Save($path); Write-Host "screenshot: $path"
 }
+# Browser items default to on: point AppData at an empty folder so no real browser profile is scanned.
+$noApps = Join-Path $fx 'noapps'
 function Open() {
+    $old = $env:LOCALAPPDATA, $env:APPDATA
+    New-Item -ItemType Directory -Force $noApps | Out-Null
+    $env:LOCALAPPDATA = $noApps; $env:APPDATA = $noApps
     $p = Start-Process $exe -PassThru
+    $env:LOCALAPPDATA, $env:APPDATA = $old
     $w = $null
     for ($i = 0; $i -lt 50 -and -not $w; $i++) {
         Start-Sleep -Milliseconds 200

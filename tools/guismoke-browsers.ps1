@@ -29,6 +29,9 @@ foreach ($rel in $files) {
 [IO.File]::WriteAllText((Join-Path $fx 'Roaming\Mozilla\Firefox\profiles.ini'), "[Profile0]`r`nName=default`r`nIsRelative=1`r`nPath=Profiles/abc.default`r`n")
 $before = @(Get-ChildItem $fx -Recurse -File).Count
 Set-Content (Join-Path $bin 'portable.dat') '#PORTABLE#'
+# Windows-tab rules default on would scan real user data: turn all off except Temporary Files.
+$names = Select-String -Path (Join-Path $root 'src\MakeCleaner\rules\Windows.ini') -Pattern '^\[(.+)\]$' | ForEach-Object { $_.Matches[0].Groups[1].Value }
+Set-Content (Join-Path $bin 'MakeCleaner.ini') (@('[Options]', 'Custom Files and Folders=False') + ($names | ForEach-Object { "$_=" + ($_ -eq 'Temporary Files') }))
 
 function Find($w, $prop, $val) { $w.FindFirst($Desc, (New-Object System.Windows.Automation.PropertyCondition($prop, $val))) }
 function Tab($w, $name) {

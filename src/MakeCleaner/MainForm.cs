@@ -76,7 +76,8 @@ public class MainForm : Form
         var list = await Task.Run(() => Rule.LoadApplications(AppContext.BaseDirectory)
             .Where(r => !Browsers.ReplacedWinapp2Sections.Contains(r.Section ?? "")).ToList());
         Fill(apps, list);
-        status.Text = $"{list.Count} applications detected";
+        // an Analyze/Clean started meanwhile owns the status line; don't overwrite its result
+        if (status.Text.StartsWith("Detecting", StringComparison.Ordinal)) status.Text = $"{list.Count} applications detected";
     }
 
     // One group node per Rule.Group (in rule order), one checkbox per rule.
