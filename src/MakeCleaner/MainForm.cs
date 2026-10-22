@@ -25,7 +25,12 @@ public class MainForm : Form
 
         var buttons = new FlowLayoutPanel { Dock = DockStyle.Bottom, Height = 40, FlowDirection = FlowDirection.RightToLeft };
         buttons.Controls.AddRange([clean, analyze]);
-        Controls.AddRange([results, items, buttons, status]);
+        var cleaner = new TabPage("Cleaner");
+        cleaner.Controls.AddRange([results, items, buttons]);
+        var tabs = new TabControl { Dock = DockStyle.Fill, Name = "tabs" };
+        tabs.TabPages.Add(cleaner);
+        tabs.TabPages.Add(ToolsPanel.Page("Tools", new ToolsPanel()));
+        Controls.AddRange([tabs, status]);
 
         analyze.Click += async (_, _) => await RunAnalyze();
         clean.Click += async (_, _) => await RunClean();
