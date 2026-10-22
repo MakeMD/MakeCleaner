@@ -30,7 +30,7 @@ public record Browser(string Name, BrowserKind Kind, string Root, string? LocalR
 }
 
 // One checkbox. Files go through Engine (excludes, secure delete); Action covers what is not a file
-// (SQL rows, a JSON/prefs value). Id is stable so ticket 06 can swap the "cookies" item for row deletion.
+// (SQL rows, a JSON/prefs value).
 public record BrowserItem(string Browser, string Id, string Name, bool Default, string? Warning, Rule Files, Func<bool, int>? Action = null)
 {
     public string Key => $"{Browser}: {Name}";
@@ -144,9 +144,7 @@ public static class Browsers
                 apply => Sql(profiles.Select(p => Path.Join(p, "History")), apply, "downloads", "downloads_url_chains", "downloads_slices")),
             new(b.Name, "lastdownload", "Last Download Location", true, null, Files(b, "Last Download Location", []),
                 apply => profiles.Count(p => JsonRemove(Path.Join(p, "Preferences"), apply, "savefile", "default_directory"))),
-            // Ticket 06 replaces this file deletion with row deletion that keeps whitelisted domains.
-            new(b.Name, "cookies", "Cookies", true, null, Files(b, "Cookies",
-                [.. profiles.SelectMany(p => new[] { Names(Path.Join(p, "Network"), "Cookies", "Cookies-journal"), Names(p, "Cookies", "Cookies-journal") })])),
+            CookiesItem(b),
             new(b.Name, "session", "Session", false, LoseSession, Files(b, "Session",
                 [.. profiles.SelectMany(p => new[] { Dir(Path.Join(p, "Sessions")), Names(p, "Current Session", "Current Tabs", "Last Session", "Last Tabs") })])),
             new(b.Name, "forms", "Saved Form Information", false, LoseForms, Files(b, "Saved Form Information", []),
@@ -183,8 +181,7 @@ public static class Browsers
                     "SELECT COUNT(*) FROM moz_annos WHERE anno_attribute_id IN (SELECT id FROM moz_anno_attributes WHERE name LIKE 'downloads/%')", downloads)),
             new(b.Name, "lastdownload", "Last Download Location", true, null, Files(b, "Last Download Location", []),
                 apply => profiles.Count(p => PrefsRemove(Path.Join(p, "prefs.js"), apply, "browser.download.lastDir"))),
-            // Ticket 06 replaces this file deletion with row deletion that keeps whitelisted domains.
-            new(b.Name, "cookies", "Cookies", true, null, Files(b, "Cookies", [.. profiles.Select(p => Names(p, Db("cookies.sqlite")))])),
+            CookiesItem(b),
             new(b.Name, "session", "Session", false, LoseSession, Files(b, "Session",
                 [.. profiles.SelectMany(p => new[] { Names(p, "sessionstore.jsonlz4", "sessionstore.js"), Dir(Path.Join(p, "sessionstore-backups")) })])),
             new(b.Name, "forms", "Saved Form Information", false, LoseForms, Files(b, "Saved Form Information",
@@ -194,6 +191,69 @@ public static class Browsers
             new(b.Name, "compact", "Compact Databases", false, null, Files(b, "Compact Databases", []),
                 apply => Vacuum(profiles.SelectMany(p => SafeFiles(p, "*.sqlite")), apply)),
         ];
+    }
+
+    // Rows, not the file: domains on the keep-list (Options > Cookies) survive.
+    static BrowserItem CookiesItem(Browser b) => new(b.Name, "cookies", "Cookies", true, null, Files(b, "Cookies", []),
+        apply => CookieDbs(b).Sum(d => WithDb(d.Db, apply, c =>
+        {
+            if (!TableExists(c, d.Table)) return 0;
+            var keep = Cookies.Keep();
+            c.CreateFunction("mc_drop", (string? host) => !Cookies.IsKept(host, keep));
+            var where = $"FROM \"{d.Table}\" WHERE mc_drop(\"{d.Column}\")";
+            var n = Scalar(c, "SELECT COUNT(*) " + where);
+            if (apply && n > 0) Exec(c, "DELETE " + where);
+            return n;
+        })));
+
+    // Chromium moved Cookies into Network\ (older builds: profile root); Firefox: cookies.sqlite.
+    public static IEnumerable<(string Db, string Table, string Column)> CookieDbs(Browser b) =>
+        b.Profiles().SelectMany(p => b.Kind == BrowserKind.Firefox
+                ? new[] { (Path.Join(p, "cookies.sqlite"), "moz_cookies", "host") }
+                : [(Path.Join(p, "Network", "Cookies"), "cookies", "host_key"), (Path.Join(p, "Cookies"), "cookies", "host_key")])
+            .Where(d => File.Exists(d.Item1));
+
+    // Every cookie domain on this PC (normalized, sorted) for Options > Cookies. Read-only; a db the
+    // running browser keeps locked is read from a temp copy, and skipped if even copying is refused.
+    public static List<string> CookieDomains(IEnumerable<Browser>? browsers = null)
+    {
+        var hosts = new SortedSet<string>(StringComparer.Ordinal);
+        foreach (var d in (browsers ?? Known).SelectMany(CookieDbs))
+        {
+            var read = (string db) => WithDb(db, false, c =>
+            {
+                if (!TableExists(c, d.Table)) return 0;
+                using var cmd = c.CreateCommand();
+                cmd.CommandText = $"SELECT DISTINCT \"{d.Column}\" FROM \"{d.Table}\"";
+                using var r = cmd.ExecuteReader();
+                while (r.Read()) if (!r.IsDBNull(0) && Cookies.Normalize(r.GetString(0)) is { Length: > 0 } h) hosts.Add(h);
+                return 1;
+            });
+            if (read(d.Db) == 0 && CopyForRead(d.Db) is { } tmp)
+                try { read(Path.Join(tmp, Path.GetFileName(d.Db))); }
+                finally { SqliteConnection.ClearAllPools(); try { Directory.Delete(tmp, true); } catch (IOException) { } }
+        }
+        return [.. hosts];
+    }
+
+    static string? CopyForRead(string db)
+    {
+        var tmp = Directory.CreateTempSubdirectory("mc-cookies-").FullName;
+        try
+        {
+            foreach (var f in new[] { db, db + "-wal" }.Where(File.Exists))
+            {
+                using var src = File.Open(f, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+                using var dst = File.Create(Path.Join(tmp, Path.GetFileName(f)));
+                src.CopyTo(dst);
+            }
+            return tmp;
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            Directory.Delete(tmp, true);
+            return null;
+        }
     }
 
     static FileKey Dir(string path) => new(path, ["*"], Recurse: true);
@@ -266,6 +326,8 @@ public static class Browsers
             {
                 DataSource = db,
                 Pooling = false,
+                DefaultTimeout = 1, // a running browser holds its lock for good; don't wait the default 30 s per db
+
                 Mode = write ? SqliteOpenMode.ReadWrite : SqliteOpenMode.ReadOnly,
             }.ToString());
             c.Open();

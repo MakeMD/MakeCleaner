@@ -76,9 +76,9 @@ try {
     $w.GetCurrentPattern([System.Windows.Automation.WindowPattern]::Pattern).Close()
     $p.WaitForExit(5000) | Out-Null
     $after = @(Get-ChildItem $fx -Recurse -File).Count
-    # Temp keep.txt + 2 Chrome cache + Chrome cookies + Firefox cookies + Firefox cache = 6 files
+    # Temp keep.txt + 2 Chrome cache + Firefox cache = 4 files (cookies are rows now; see guismoke-cookies.ps1)
     $ok = ($browserGroups -contains 'Google Chrome') -and ($browserGroups -contains 'Mozilla Firefox') -and
-          -not ($appGroups -contains 'Google Chrome Web Browser') -and ($a -like '*: 6 files*') -and ($after -eq $before)
+          -not ($appGroups -contains 'Google Chrome Web Browser') -and ($a -like '*: 4 files*') -and ($after -eq $before)
     if (-not $ok) { throw "SMOKE FAILED (fixture files $before -> $after)" }
     Write-Host 'SMOKE OK (analyze only, nothing deleted)'
 } finally {

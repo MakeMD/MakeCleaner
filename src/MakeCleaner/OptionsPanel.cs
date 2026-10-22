@@ -35,6 +35,7 @@ public class OptionsPanel : UserControl
         }
         layout.Controls.Add(IncludeGroup());
         layout.Controls.Add(ExcludeGroup());
+        layout.Controls.Add(CookiesGroup());
         Controls.Add(layout);
     }
 
@@ -110,6 +111,95 @@ public class OptionsPanel : UserControl
         Reload();
 
         return Group("Exclude (never clean these)", list, Row(path, kind, Browse(path), add, remove), status);
+    }
+
+    // Left: every cookie domain the browsers hold; right: the keep-list. Kept domains survive every Cookies clean.
+    GroupBox CookiesGroup()
+    {
+        var all = new ListBox { Width = 300, Height = 150, Name = "cookieAll", SelectionMode = SelectionMode.MultiExtended, Sorted = true };
+        var keep = new ListBox { Width = 300, Height = 150, Name = "cookieKeep", SelectionMode = SelectionMode.MultiExtended };
+        var toKeep = new Button { Text = "Keep >", Name = "cookieToKeep" };
+        var toAll = new Button { Text = "< Remove", Name = "cookieRemove" };
+        var domain = new TextBox { Width = 300, Name = "cookieDomain", PlaceholderText = "example.com" };
+        var add = new Button { Text = "Add", Name = "cookieAdd" };
+        var scan = new Button { Text = "Rescan", Name = "cookieScan" };
+        var import = new Button { Text = "Import...", Name = "cookieImport" };
+        var export = new Button { Text = "Export...", Name = "cookieExport" };
+        var status = new Label { AutoSize = true, Name = "cookieStatus" };
+        List<string> found = [];
+
+        List<string> Kept() => settings.GetList(Cookies.KeepPrefix);
+        void Show()
+        {
+            var kept = Kept();
+            keep.Items.Clear();
+            keep.Items.AddRange([.. kept]);
+            all.Items.Clear();
+            all.Items.AddRange([.. found.Where(d => !Cookies.IsKept(d, kept))]);
+        }
+        void Save(IEnumerable<string> domains)
+        {
+            settings.SetList(Cookies.KeepPrefix, Cookies.Parse(domains));
+            settings.Save();
+            Show();
+        }
+        async Task Scan()
+        {
+            scan.Enabled = false;
+            status.Text = "Reading cookies from browsers...";
+            found = await Task.Run(() => Browsers.CookieDomains());
+            Show();
+            status.Text = $"{found.Count} domains with cookies, {Kept().Count} kept";
+            scan.Enabled = true;
+        }
+
+        toKeep.Click += (_, _) => Save([.. Kept(), .. all.SelectedItems.Cast<string>()]);
+        toAll.Click += (_, _) =>
+        {
+            var drop = keep.SelectedItems.Cast<string>().ToHashSet();
+            Save(Kept().Where(d => !drop.Contains(d)));
+        };
+        add.Click += (_, _) =>
+        {
+            if (Cookies.Parse([domain.Text]) is not [var d] || !d.Contains('.')) { status.Text = "Enter a domain like example.com."; return; }
+            Save([.. Kept(), d]);
+            domain.Clear();
+            status.Text = $"Keeping cookies of {d} and its subdomains.";
+        };
+        scan.Click += async (_, _) => await Scan();
+        import.Click += (_, _) =>
+        {
+            using var dlg = new OpenFileDialog { Filter = "Text files (*.txt)|*.txt|All files (*.*)|*.*" };
+            if (dlg.ShowDialog() != DialogResult.OK) return;
+            var added = Cookies.Parse(File.ReadLines(dlg.FileName));
+            Save([.. Kept(), .. added]);
+            status.Text = $"Imported {added.Count} domains.";
+        };
+        export.Click += (_, _) =>
+        {
+            using var dlg = new SaveFileDialog { Filter = "Text files (*.txt)|*.txt", FileName = "cookies-to-keep.txt" };
+            if (dlg.ShowDialog() != DialogResult.OK) return;
+            File.WriteAllLines(dlg.FileName, Kept());
+            status.Text = $"Exported {Kept().Count} domains.";
+        };
+        var scanned = false;
+        VisibleChanged += async (_, _) => { if (Visible && !scanned) { scanned = true; await Scan(); } };
+        Show();
+
+        static FlowLayoutPanel Column(params Control[] c)
+        {
+            var col = new FlowLayoutPanel { AutoSize = true, FlowDirection = FlowDirection.TopDown, WrapContents = false, Margin = new Padding(0) };
+            col.Controls.AddRange(c);
+            return col;
+        }
+        var g = Group("Cookies (domains to keep when cleaning browser cookies)",
+            Row(Column(new Label { Text = "Cookies on computer", AutoSize = true }, all),
+                Column(new Label { Text = " ", AutoSize = true }, toKeep, toAll),
+                Column(new Label { Text = "Cookies to keep", AutoSize = true }, keep)),
+            Row(domain, add, scan, import, export),
+            status);
+        g.Height = 290;
+        return g;
     }
 
     void Fill(ListBox list, string prefix)

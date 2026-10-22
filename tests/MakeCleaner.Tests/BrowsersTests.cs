@@ -42,6 +42,12 @@ public class BrowsersTests : IDisposable
     static BrowserItem Item(List<BrowserItem> items, string id) => items.Single(i => i.Id == id);
     static List<string> Found(BrowserItem i) => [.. Engine.Analyze(i.Files).Select(f => f.FullName).Order()];
 
+    // example.com x2, a subdomain of google.com, a look-alike and a tracker
+    const string ChromeCookies = """
+        CREATE TABLE cookies(host_key TEXT, name TEXT);
+        INSERT INTO cookies VALUES('.example.com','a'),('www.example.com','b'),('mail.google.com','c'),('.badexample.com','d'),('tracker.net','e');
+        """;
+
     Browser Chromium()
     {
         var ud = Path.Combine(dir, "Chrome", "User Data");
@@ -50,7 +56,7 @@ public class BrowsersTests : IDisposable
             Put($@"Chrome\User Data\{p}\Preferences", """{"savefile":{"default_directory":"C:\\Old","type":1},"homepage":"x"}""");
             Put($@"Chrome\User Data\{p}\Cache\Cache_Data\data_0");
             Put($@"Chrome\User Data\{p}\Code Cache\js\abc");
-            Put($@"Chrome\User Data\{p}\Network\Cookies");
+            Db(Path.Combine(ud, p, "Network", "Cookies"), ChromeCookies);
             Put($@"Chrome\User Data\{p}\Login Data");
             Put($@"Chrome\User Data\{p}\Bookmarks", "{}");
             Db(Path.Combine(ud, p, "History"), """
@@ -85,16 +91,12 @@ public class BrowsersTests : IDisposable
     }
 
     [Fact]
-    public void Chromium_cache_and_cookies_are_files_of_every_profile()
+    public void Chromium_cache_is_files_of_every_profile()
     {
         var items = Browsers.Items(Chromium());
         var cache = Found(Item(items, "cache"));
         Assert.Equal(4, cache.Count);
         Assert.DoesNotContain(cache, f => f.Contains("System Profile"));
-
-        var cookies = Found(Item(items, "cookies"));
-        Assert.Equal(2, cookies.Count);
-        Assert.All(cookies, f => Assert.EndsWith(@"Network\Cookies", f));
 
         var r = Engine.Clean(Engine.Analyze(Item(items, "cache").Files));
         Assert.Equal(4, r.Deleted);
@@ -142,14 +144,14 @@ public class BrowsersTests : IDisposable
     public void Opera_profile_in_root_with_cache_on_the_local_side()
     {
         Put(@"Roaming\Opera Stable\Preferences", "{}");
-        Put(@"Roaming\Opera Stable\Network\Cookies");
+        Db(Path.Combine(dir, @"Roaming\Opera Stable\Network\Cookies"), ChromeCookies);
         Put(@"Local\Opera Stable\Cache\Cache_Data\f_000001");
         var b = new Browser("Fake Opera", BrowserKind.Chromium, Path.Combine(dir, @"Roaming\Opera Stable"), Path.Combine(dir, @"Local\Opera Stable"), "mc-no-such-process");
 
         var items = Browsers.Items(b);
         Assert.Single(b.Profiles());
         Assert.Equal([Path.Combine(dir, @"Local\Opera Stable\Cache\Cache_Data\f_000001")], Found(Item(items, "cache")));
-        Assert.Single(Found(Item(items, "cookies")));
+        Assert.Equal(5, Item(items, "cookies").Preview());
     }
 
     Browser Firefox()
@@ -183,7 +185,9 @@ public class BrowsersTests : IDisposable
                 CREATE TABLE moz_anno_attributes(id INTEGER PRIMARY KEY, name TEXT); INSERT INTO moz_anno_attributes VALUES(1,'downloads/destinationFileURI'),(2,'other');
                 CREATE TABLE moz_annos(id INTEGER PRIMARY KEY, anno_attribute_id INTEGER); INSERT INTO moz_annos VALUES(1,1),(2,2);
                 """);
-            File.WriteAllText(Path.Combine(p, "cookies.sqlite"), "x");
+            Db(Path.Combine(p, "cookies.sqlite"), """
+                CREATE TABLE moz_cookies(id INTEGER PRIMARY KEY, host TEXT); INSERT INTO moz_cookies(host) VALUES('.example.com'),('accounts.google.com'),('tracker.net');
+                """);
             File.WriteAllText(Path.Combine(p, "logins.json"), "{}");
             File.WriteAllText(Path.Combine(p, "prefs.js"), "user_pref(\"browser.download.lastDir\", \"C:\\\\Old\");\nuser_pref(\"browser.startup.page\", 3);\n");
             Directory.CreateDirectory(Path.Combine(p, "sessionstore-backups"));
@@ -200,7 +204,7 @@ public class BrowsersTests : IDisposable
         Assert.Equal(["ElsewhereProfile", "abc.default-release"], b.Profiles().Select(Path.GetFileName).Order(StringComparer.Ordinal));
         var items = Browsers.Items(b);
         Assert.Equal([Path.Combine(dir, @"Local\Firefox\Profiles\abc.default-release\cache2\entries\E1")], Found(Item(items, "cache")));
-        Assert.Equal(2, Found(Item(items, "cookies")).Count);
+        Assert.Equal(2, Browsers.CookieDbs(b).Count());
         Assert.Equal(2, Found(Item(items, "session")).Count);
         Assert.Equal(2, Found(Item(items, "passwords")).Count);
     }
@@ -233,11 +237,66 @@ public class BrowsersTests : IDisposable
         Assert.Contains("browser.startup.page", prefs);
     }
 
+    static long Rows(string db, string table) { SqliteConnection.ClearAllPools(); return Count(db, table); }
+
+    [Fact]
+    public void Cookies_are_rows_and_keep_list_domains_survive_in_chromium_and_firefox()
+    {
+        var chrome = Browsers.Items(Chromium());
+        var firefox = Browsers.Items(Firefox());
+        var chromeDb = Path.Combine(dir, @"Chrome\User Data\Default\Network\Cookies");
+        var firefoxDb = Path.Combine(dir, "ElsewhereProfile", "cookies.sqlite");
+        try
+        {
+            Assert.Empty(Item(chrome, "cookies").Files.FileKeys); // the database file itself is never deleted
+            Assert.Equal(10, Item(chrome, "cookies").Preview());  // empty keep-list: every cookie, 5 x 2 profiles
+
+            Cookies.Keep = () => ["www.example.com", "google.com"];
+            Assert.Equal(4, Item(chrome, "cookies").Preview());   // badexample.com + tracker.net, x 2
+            Assert.Equal(5, Rows(chromeDb, "cookies"));            // preview changed nothing
+            Assert.Equal(4, Item(chrome, "cookies").Run());
+            Assert.Equal(2, Item(firefox, "cookies").Run());      // tracker.net x 2 profiles
+
+            SqliteConnection.ClearAllPools();
+            using var c = new SqliteConnection($"Data Source={chromeDb};Pooling=False");
+            c.Open();
+            using var cmd = c.CreateCommand();
+            cmd.CommandText = "SELECT host_key FROM cookies ORDER BY host_key";
+            var left = new List<string>();
+            using (var r = cmd.ExecuteReader())
+                while (r.Read()) left.Add(r.GetString(0));
+            Assert.Equal([".example.com", "mail.google.com", "www.example.com"], left);
+            Assert.Equal(2, Rows(firefoxDb, "moz_cookies"));
+        }
+        finally { Cookies.Keep = () => []; }
+    }
+
+    [Fact]
+    public void Cookie_domains_are_listed_normalized_even_from_a_locked_database()
+    {
+        var b = Chromium();
+        var f = Firefox();
+        var db = Path.Combine(dir, @"Chrome\User Data\Default\Network\Cookies");
+        var before = Directory.GetDirectories(Path.GetTempPath(), "mc-cookies-*").Length;
+        // what a running browser does: hold an exclusive lock so other connections cannot read
+        using (var hold = new SqliteConnection($"Data Source={db};Pooling=False"))
+        {
+            hold.Open();
+            using (var cmd = hold.CreateCommand()) { cmd.CommandText = "PRAGMA locking_mode=EXCLUSIVE; BEGIN EXCLUSIVE;"; cmd.ExecuteNonQuery(); }
+
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            var domains = Browsers.CookieDomains([b, f]);
+            Assert.Equal(["accounts.google.com", "badexample.com", "example.com", "mail.google.com", "tracker.net"], domains);
+            Assert.True(sw.ElapsedMilliseconds < 10000, $"locked db took {sw.ElapsedMilliseconds} ms");
+        }
+        Assert.Equal(before, Directory.GetDirectories(Path.GetTempPath(), "mc-cookies-*").Length); // temp copies cleaned up
+    }
+
     [Fact]
     public void Compact_vacuums_databases()
     {
         var compact = Item(Browsers.Items(Firefox()), "compact");
-        Assert.Equal(2, compact.Preview()); // places.sqlite x 2 ("cookies.sqlite" here is not a real db and is skipped)
+        Assert.Equal(4, compact.Preview()); // places.sqlite + cookies.sqlite, x 2 profiles
         compact.Run();
     }
 

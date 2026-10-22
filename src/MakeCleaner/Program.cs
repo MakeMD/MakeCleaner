@@ -6,6 +6,8 @@ static class Program
     static void Main()
     {
         ApplicationConfiguration.Initialize();
-        Application.Run(new MainForm(new Settings(Settings.ResolveDir(AppContext.BaseDirectory))));
+        var settings = new Settings(Settings.ResolveDir(AppContext.BaseDirectory));
+        Cookies.Keep = () => settings.GetList(Cookies.KeepPrefix);
+        Application.Run(new MainForm(settings));
     }
 }
