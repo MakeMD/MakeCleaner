@@ -10,6 +10,8 @@ public class ToolsPanel : UserControl
         tabs.TabPages.Add(Page("Startup", new StartupPanel()));
         tabs.TabPages.Add(Page("Duplicate Finder", new DuplicatesPanel()));
         tabs.TabPages.Add(Page("Disk Analyzer", new DiskAnalyzerPanel()));
+        tabs.TabPages.Add(Page("Drive Wiper", new DriveWiperPanel()));
+        tabs.TabPages.Add(Page("System Restore", new RestorePanel()));
         Controls.Add(tabs);
     }
 
