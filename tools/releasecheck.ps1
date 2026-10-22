@@ -47,7 +47,8 @@ $job = Start-Job -ArgumentList $bin, $stop -ScriptBlock {
 
 $failed = @()
 try {
-    foreach ($s in Get-ChildItem $PSScriptRoot -Filter '*smoke*.ps1' | Sort-Object Name) {
+    # ponytail: the zip ships the WinForms exe until ticket 19, so the WPF-only smoke has nothing to run against yet
+    foreach ($s in Get-ChildItem $PSScriptRoot -Filter '*smoke*.ps1' | Where-Object Name -ne 'guismoke-wpf.ps1' | Sort-Object Name) {
         $out = & powershell -NoProfile -ExecutionPolicy Bypass -File $s.FullName -Screen $Screen -BinDir $bin *>&1 | Out-String
         $ok = $LASTEXITCODE -eq 0 -and $out -match 'SMOKE OK'
         Write-Host ("{0,-24} {1}" -f $s.Name, $(if ($ok) { 'OK' } else { 'FAIL' }))

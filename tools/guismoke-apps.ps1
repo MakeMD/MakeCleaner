@@ -1,11 +1,12 @@
 # GUI smoke for the Applications tab: portable mode, TEMP pointed at a fixture, waits for app detection,
 # opens the Applications tab, ticks the first detected entry (if UIA allows) and runs Analyze ONLY.
 # Never clicks Run Cleaner. Pure ASCII (PS 5.1).
-param([int]$Screen = 1, [string]$Config = 'Debug', [string]$BinDir = '', [string]$Shot = "$env:TEMP\makecleaner-apps-smoke.png")
+param([int]$Screen = 1, [string]$Config = 'Debug', [string]$BinDir = '', [switch]$Wpf, [string]$Shot = "$env:TEMP\makecleaner-apps-smoke.png")
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
-$bin = if ($BinDir) { $BinDir } else { Join-Path $root "src\MakeCleaner\bin\$Config\net10.0-windows" } # -BinDir: a published copy (tools\releasecheck.ps1)
-$exe = Join-Path $bin 'MakeCleaner.exe'
+$app = if ($Wpf) { 'MakeCleaner.Wpf' } else { 'MakeCleaner' } # -Wpf: the WPF window; WinForms stays the default until ticket 19
+$bin = if ($BinDir) { $BinDir } else { Join-Path $root "src\$app\bin\$Config\net10.0-windows" } # -BinDir: a published copy (tools\releasecheck.ps1)
+$exe = Join-Path $bin "$app.exe"
 . (Join-Path $PSScriptRoot 'screenpin.ps1')
 Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes, System.Drawing
 $AT = [System.Windows.Automation.AutomationElement]
@@ -28,7 +29,7 @@ $p = Start-Process $exe -PassThru
 $env:TEMP = $oldTemp
 try {
     $w = $null
-    for ($i = 0; $i -lt 50 -and -not $w; $i++) {
+    for ($i = 0; $i -lt 100 -and -not $w; $i++) { # up to 20 s: a cold WPF start can take >10 s
         Start-Sleep -Milliseconds 200
         $w = $AT::RootElement.FindFirst($TS::Children, (New-Object System.Windows.Automation.PropertyCondition($AT::ProcessIdProperty, $p.Id)))
     }
@@ -38,13 +39,19 @@ try {
     (ByName $w 'Applications').GetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern).Select()
     Start-Sleep -Milliseconds 300
     $tree = ById $w 'apps'
-    $groups = $tree.FindAll($TS::Children, [System.Windows.Automation.Condition]::TrueCondition)
+    $item = New-Object System.Windows.Automation.PropertyCondition($AT::ControlTypeProperty, [System.Windows.Automation.ControlType]::TreeItem)
+    $groups = $tree.FindAll($TS::Children, $item)
     Write-Host "groups: $($groups.Count)"
     $ticked = '(none)'
     if ($groups.Count -gt 0) {
         $g = $groups[0]
         $g.GetCurrentPattern([System.Windows.Automation.ExpandCollapsePattern]::Pattern).Expand()
-        $leaf = $g.FindFirst($TS::Children, [System.Windows.Automation.Condition]::TrueCondition)
+        Start-Sleep -Milliseconds 300
+        $leaf = $g.FindFirst($TS::Children, $item)
+        # WinForms tree items toggle themselves; WPF items carry a CheckBox
+        if ($leaf -and -not $leaf.TryGetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern, [ref]$null)) {
+            $leaf = $leaf.FindFirst($TS::Children, (New-Object System.Windows.Automation.PropertyCondition($AT::ControlTypeProperty, [System.Windows.Automation.ControlType]::CheckBox)))
+        }
         $tp = $null
         if ($leaf -and $leaf.TryGetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern, [ref]$tp)) { $tp.Toggle(); $ticked = $leaf.Current.Name }
     }

@@ -1,5 +1,7 @@
 namespace MakeCleaner;
 
+public record ResultRow(string Name, int Items, long Bytes);
+
 // One Analyze -> Clean pass over the ticked items, shared by the GUI and /auto so both clean exactly the same way.
 public class CleanPass(Settings settings)
 {
@@ -27,17 +29,42 @@ public class CleanPass(Settings settings)
         ([.. WindowsRules().Concat(AppRules()).Where(r => !IsWipe(r) && s.GetBool(r.Name, r.Default))],
          [.. Browsers.Detect().Where(i => s.GetBool(i.Key, i.Default))]);
 
-    public void Analyze(IEnumerable<Rule> rules, IEnumerable<BrowserItem> browserItems)
+    // One row per ticked item that found something (the results Summary view); Items = files + registry entries + actions, or browser rows.
+    public List<ResultRow> Summary { get; private set; } = [];
+
+    // progress = (items done, items total); a cancelled run throws and leaves nothing to clean.
+    public void Analyze(IEnumerable<Rule> rules, IEnumerable<BrowserItem> browserItems,
+        IProgress<(int Done, int Total)>? progress = null, CancellationToken ct = default)
     {
+        Scanned = []; Files = []; RegKeys = []; Actions = []; BrowserRows = []; Summary = [];
         // the Custom entry is rebuilt from Options > Include each time, so list edits apply without a restart
-        Scanned = [.. rules.Select(r => r.Name == Custom.RuleName ? Custom.IncludeRule(settings) : r),
-                   .. browserItems.Select(i => i.Files).Where(r => r.FileKeys.Count > 0)];
-        foreach (var r in Scanned) r.OlderThanHours = r.AgeOption != null && settings.GetBool(r.AgeOption, false) ? 24 : null;
+        List<Rule> scanned = [.. rules.Select(r => r.Name == Custom.RuleName ? Custom.IncludeRule(settings) : r),
+                              .. browserItems.Select(i => i.Files).Where(r => r.FileKeys.Count > 0)];
+        foreach (var r in scanned) r.OlderThanHours = r.AgeOption != null && settings.GetBool(r.AgeOption, false) ? 24 : null;
         var ex = Custom.Excludes(settings);
-        Files = [.. Scanned.SelectMany(r => Engine.Analyze(r, ex)).DistinctBy(f => f.FullName)];
-        RegKeys = [.. Scanned.SelectMany(r => Engine.AnalyzeRegistry(r, ex)).Distinct()];
-        Actions = [.. Scanned.SelectMany(Engine.AnalyzeActions)];
-        BrowserRows = [.. browserItems.Where(i => i.Action != null).Select(i => (i, i.Preview())).Where(a => a.Item2 > 0)];
+        var actionItems = browserItems.Where(i => i.Action != null).ToList();
+        int done = 0, total = scanned.Count + actionItems.Count;
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        List<FileInfo> files = []; List<RegKey> regKeys = []; List<Pending> actions = []; List<ResultRow> summary = [];
+        foreach (var r in scanned)
+        {
+            ct.ThrowIfCancellationRequested();
+            progress?.Report((done++, total));
+            var f = Engine.Analyze(r, ex, ct).Where(x => seen.Add(x.FullName)).ToList(); // a file two rules share counts once
+            var k = Engine.AnalyzeRegistry(r, ex).Where(x => !regKeys.Contains(x)).ToList();
+            var a = Engine.AnalyzeActions(r);
+            files.AddRange(f); regKeys.AddRange(k); actions.AddRange(a);
+            if (f.Count + k.Count + a.Count > 0) summary.Add(new(r.Name, f.Count + k.Count + a.Count, f.Sum(x => x.Length) + a.Sum(x => x.Bytes)));
+        }
+        List<(BrowserItem, int)> rows = [];
+        foreach (var i in actionItems)
+        {
+            ct.ThrowIfCancellationRequested();
+            progress?.Report((done++, total));
+            if (i.Preview() is var n and > 0) { rows.Add((i, n)); summary.Add(new(i.Key, n, 0)); }
+        }
+        progress?.Report((total, total));
+        (Scanned, Files, RegKeys, Actions, BrowserRows, Summary) = (scanned, files, regKeys, actions, rows, summary);
     }
 
     public string AnalyzeSummary() =>
@@ -73,7 +100,7 @@ public class CleanPass(Settings settings)
                 wiped = ", free space wiped";
             }
             catch (Exception e) when (e is IOException or UnauthorizedAccessException) { wiped = ", free space wipe failed: " + e.Message; }
-        Files = []; RegKeys = []; Actions = []; BrowserRows = [];
+        Files = []; RegKeys = []; Actions = []; BrowserRows = []; Summary = [];
         return $"Cleaning complete: {r.Deleted} files removed, {Bytes.Fmt(r.BytesFreed)} freed, {r.Skipped} skipped (in use), {rr.Deleted} registry entries removed, {rr.Skipped} skipped"
             + (ra.Deleted + ra.Skipped > 0 ? $", {ra.Deleted} other items done" + (ra.Skipped > 0 ? $" ({ra.Skipped} failed)" : "") : "")
             + (rb > 0 ? $", {rb} browser entries removed" : "")

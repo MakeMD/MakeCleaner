@@ -71,6 +71,29 @@ public class EngineTests : IDisposable
     }
 
     [Fact]
+    public void Pass_summarizes_per_item_reports_progress_and_cancel_leaves_nothing()
+    {
+        Touch("a.log", 5); Touch("b.log", 7); Touch("c.tmp", 3);
+        var rules = Rule.ParseIni($"[Logs]\nFileKey1={dir}|*.log\n[All]\nFileKey1={dir}|*.*\n[Empty]\nFileKey1={dir}|*.none");
+        var pass = new CleanPass(new Settings(Path.Combine(dir, "cfg")));
+        var steps = new List<(int, int)>();
+        pass.Analyze(rules, [], new SyncProgress<(int, int)>(steps.Add));
+
+        Assert.Equal([("Logs", 2, 12L), ("All", 1, 3L)], pass.Summary.Select(r => (r.Name, r.Items, r.Bytes))); // shared files count once
+        Assert.Equal([(0, 3), (1, 3), (2, 3), (3, 3)], steps);
+        Assert.Equal(3, pass.Files.Count);
+
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+        Assert.Throws<OperationCanceledException>(() => pass.Analyze(rules, [], ct: cts.Token));
+        Assert.False(pass.Any); // a cancelled run never leaves the previous results armed for Clean
+        Assert.Empty(pass.Summary);
+    }
+
+    // Progress<T> posts to a sync context; tests want the calls in order, right away.
+    sealed class SyncProgress<T>(Action<T> report) : IProgress<T> { public void Report(T value) => report(value); }
+
+    [Fact]
     public void Builtin_temp_rule_targets_temp_recursively()
     {
         var key = Assert.Single(Rule.ParseIni(Engine.BuiltInRules).Single(r => r.Name == "Temporary Files").FileKeys);
@@ -93,8 +116,10 @@ public class EngineTests : IDisposable
         Assert.True(File.Exists(Path.Combine(dir, Settings.FileName)));
     }
 
-    // The WinForms app's build folder (the test project builds it but does not reference it).
-    internal static readonly string AppDir = typeof(EngineTests).Assembly.GetCustomAttributes<AssemblyMetadataAttribute>().Single(a => a.Key == "AppDir").Value!;
+    // The apps' build folders (the test project builds them but does not reference them).
+    internal static readonly string AppDir = Meta("AppDir");
+    static readonly string WpfAppDir = Meta("WpfAppDir");
+    static string Meta(string key) => typeof(EngineTests).Assembly.GetCustomAttributes<AssemblyMetadataAttribute>().Single(a => a.Key == key).Value!;
 
     // Assembly references read from metadata only, so nothing gets loaded into the test process.
     static string[] References(string dll)
@@ -104,12 +129,16 @@ public class EngineTests : IDisposable
         return [.. md.AssemblyReferences.Select(h => md.GetString(md.GetAssemblyReference(h).Name))];
     }
 
-    [Fact]
-    public void No_shipped_assembly_references_networking()
+    [Theory]
+    [InlineData("AppDir", "MakeCleaner.dll")]
+    [InlineData("WpfAppDir", "MakeCleaner.Wpf.dll")]
+    public void No_shipped_assembly_references_networking(string dirKey, string appDll)
     {
-        // Walk the app exe's MakeCleaner.dll and every app-local dependency it pulls in (MakeCleaner.Core, Microsoft.Data.Sqlite,
-        // SQLitePCLRaw ...): exactly the managed set that ships next to / inside the published exe. Framework assemblies live elsewhere.
-        var queue = new Queue<string>([Path.Combine(AppDir, "MakeCleaner.dll")]);
+        // Walk the app's own dll and every app-local dependency it pulls in (MakeCleaner.Core, Microsoft.Data.Sqlite,
+        // SQLitePCLRaw ...): exactly the managed set that ships next to / inside the published exe. Framework assemblies
+        // (WinForms, WPF's PresentationFramework etc.) live elsewhere and are not walked.
+        var appDir = dirKey == "AppDir" ? AppDir : WpfAppDir;
+        var queue = new Queue<string>([Path.Combine(appDir, appDll)]);
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         while (queue.TryDequeue(out var path))
         {
@@ -117,7 +146,7 @@ public class EngineTests : IDisposable
             foreach (var r in References(path))
             {
                 Assert.False(r.StartsWith("System.Net", StringComparison.OrdinalIgnoreCase), $"{Path.GetFileName(path)} references {r}");
-                var local = Path.Combine(AppDir, r + ".dll");
+                var local = Path.Combine(appDir, r + ".dll");
                 if (File.Exists(local)) queue.Enqueue(local);
             }
         }

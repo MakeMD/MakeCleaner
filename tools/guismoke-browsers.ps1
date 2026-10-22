@@ -1,11 +1,12 @@
 # GUI smoke for the Browsers tab: TEMP/LOCALAPPDATA/APPDATA point at a fixture with a fake Chrome and Firefox,
 # so the real browsers are never seen. Opens Cleaner > Browsers, clicks Analyze ONLY (never Run Cleaner),
 # checks the fixture is untouched and Winapp2 Chrome sections are hidden. UI Automation, no keystrokes. Pure ASCII (PS 5.1).
-param([int]$Screen = 1, [string]$Config = 'Debug', [string]$BinDir = '', [string]$Shot = "$env:TEMP\makecleaner-browsers-smoke.png")
+param([int]$Screen = 1, [string]$Config = 'Debug', [string]$BinDir = '', [switch]$Wpf, [string]$Shot = "$env:TEMP\makecleaner-browsers-smoke.png")
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
-$bin = if ($BinDir) { $BinDir } else { Join-Path $root "src\MakeCleaner\bin\$Config\net10.0-windows" } # -BinDir: a published copy (tools\releasecheck.ps1)
-$exe = Join-Path $bin 'MakeCleaner.exe'
+$app = if ($Wpf) { 'MakeCleaner.Wpf' } else { 'MakeCleaner' } # -Wpf: the WPF window; WinForms stays the default until ticket 19
+$bin = if ($BinDir) { $BinDir } else { Join-Path $root "src\$app\bin\$Config\net10.0-windows" } # -BinDir: a published copy (tools\releasecheck.ps1)
+$exe = Join-Path $bin "$app.exe"
 . (Join-Path $PSScriptRoot 'screenpin.ps1')
 Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes, System.Drawing
 $AT = [System.Windows.Automation.AutomationElement]
@@ -43,8 +44,13 @@ function Tab($w, $name) {
 function Status($w) { (Find $w $AT::AutomationIdProperty 'status').Current.Name }
 function WaitStatus($w, $prefix) { for ($i = 0; $i -lt 100; $i++) { $s = Status $w; if ($s -like "$prefix*") { return $s }; Start-Sleep -Milliseconds 200 }; throw "timeout waiting for '$prefix', last: $s" }
 function Nodes($w, $id) {
-    $t = Find $w $AT::AutomationIdProperty $id
-    $t.FindAll([System.Windows.Automation.TreeScope]::Children, (New-Object System.Windows.Automation.PropertyCondition($AT::ControlTypeProperty, [System.Windows.Automation.ControlType]::TreeItem))) | ForEach-Object { $_.Current.Name }
+    for ($i = 0; $i -lt 20; $i++) { # a just-selected WPF tab builds its tree a moment later
+        $t = Find $w $AT::AutomationIdProperty $id
+        $n = @(if ($t) { $t.FindAll([System.Windows.Automation.TreeScope]::Children, (New-Object System.Windows.Automation.PropertyCondition($AT::ControlTypeProperty, [System.Windows.Automation.ControlType]::TreeItem))) | ForEach-Object { $_.Current.Name } })
+        if ($n.Count -gt 0) { return $n }
+        Start-Sleep -Milliseconds 150
+    }
+    return @()
 }
 
 Start-ScreenPin -Screen $Screen -Exe $exe
@@ -54,7 +60,7 @@ $p = Start-Process $exe -PassThru
 $env:TEMP, $env:LOCALAPPDATA, $env:APPDATA = $old
 try {
     $w = $null
-    for ($i = 0; $i -lt 50 -and -not $w; $i++) {
+    for ($i = 0; $i -lt 100 -and -not $w; $i++) { # up to 20 s: a cold WPF start can take >10 s
         Start-Sleep -Milliseconds 200
         $w = $AT::RootElement.FindFirst([System.Windows.Automation.TreeScope]::Children, (New-Object System.Windows.Automation.PropertyCondition($AT::ProcessIdProperty, $p.Id)))
     }

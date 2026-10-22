@@ -1,0 +1,75 @@
+<UserControl x:Class="MakeCleaner.CleanerView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="300" />
+            <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
+
+        <!-- what to clean -->
+        <TabControl x:Name="tabs" AutomationProperties.AutomationId="cleanTabs">
+            <TabItem Header="Windows">
+                <TreeView x:Name="windows" Style="{StaticResource CheckTree}" AutomationProperties.AutomationId="windows" />
+            </TabItem>
+            <TabItem Header="Browsers">
+                <TreeView x:Name="browsers" Style="{StaticResource CheckTree}" AutomationProperties.AutomationId="browsers" />
+            </TabItem>
+            <TabItem Header="Applications">
+                <TreeView x:Name="apps" Style="{StaticResource CheckTree}" AutomationProperties.AutomationId="apps" />
+            </TabItem>
+        </TabControl>
+
+        <DockPanel Grid.Column="1" Margin="16,0,0,0">
+            <!-- progress strip: status line, bar with "NN% (x of y)", Cancel while analyzing -->
+            <Border DockPanel.Dock="Top" Background="{StaticResource Surface}" BorderBrush="{StaticResource Line}" BorderThickness="1" CornerRadius="4" Padding="14,10">
+                <StackPanel>
+                    <DockPanel>
+                        <Button x:Name="cancel" DockPanel.Dock="Right" Content="Cancel" MinWidth="80" MinHeight="26" Padding="10,2"
+                                IsEnabled="False" AutomationProperties.AutomationId="cancel" />
+                        <TextBlock x:Name="status" AutomationProperties.AutomationId="status" FontWeight="SemiBold" TextWrapping="Wrap" VerticalAlignment="Center" />
+                    </DockPanel>
+                    <DockPanel Margin="0,8,0,0">
+                        <TextBlock x:Name="progressText" DockPanel.Dock="Right" Margin="10,0,0,0" Foreground="{StaticResource Muted}"
+                                   FontSize="12" MinWidth="110" TextAlignment="Right" AutomationProperties.AutomationId="progressText" />
+                        <ProgressBar x:Name="progress" AutomationProperties.AutomationId="progress" VerticalAlignment="Center" />
+                    </DockPanel>
+                </StackPanel>
+            </Border>
+
+            <!-- Analyze left, Run Cleaner right -->
+            <DockPanel DockPanel.Dock="Bottom" Margin="0,12,0,0">
+                <Button x:Name="analyze" Content="Analyze" AutomationProperties.AutomationId="analyze" />
+                <Button x:Name="clean" Content="Run Cleaner" Style="{StaticResource Primary}" HorizontalAlignment="Right"
+                        IsEnabled="False" AutomationProperties.AutomationId="clean" />
+            </DockPanel>
+
+            <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,12,0,6">
+                <RadioButton x:Name="viewSummary" Content="Summary" IsChecked="True" Margin="0,0,16,0" AutomationProperties.AutomationId="viewSummary" />
+                <RadioButton x:Name="viewFiles" Content="Files" AutomationProperties.AutomationId="viewFiles" />
+            </StackPanel>
+
+            <Grid>
+                <ListView x:Name="results" AutomationProperties.AutomationId="results" BorderBrush="{StaticResource Line}">
+                    <ListView.View>
+                        <GridView>
+                            <GridViewColumn Header="Item" Width="420" DisplayMemberBinding="{Binding Name}" />
+                            <GridViewColumn Header="Found" Width="110" DisplayMemberBinding="{Binding Found}" />
+                            <GridViewColumn Header="Size" Width="100" DisplayMemberBinding="{Binding Size}" />
+                        </GridView>
+                    </ListView.View>
+                    <ListView.ContextMenu>
+                        <ContextMenu>
+                            <MenuItem x:Name="openFolder" Header="Open containing folder" />
+                            <MenuItem x:Name="excludeFile" Header="Add file to Exclude" />
+                            <MenuItem x:Name="excludeFolder" Header="Add folder to Exclude" />
+                        </ContextMenu>
+                    </ListView.ContextMenu>
+                </ListView>
+                <TextBlock x:Name="hint" Text="Tick what to clean on the left, then press Analyze. Nothing is deleted until Run Cleaner."
+                           Foreground="{StaticResource Muted}" HorizontalAlignment="Center" VerticalAlignment="Center"
+                           TextWrapping="Wrap" MaxWidth="360" TextAlignment="Center" IsHitTestVisible="False" />
+            </Grid>
+        </DockPanel>
+    </Grid>
+</UserControl>

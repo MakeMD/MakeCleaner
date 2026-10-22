@@ -11,7 +11,8 @@ public static class Engine
     public static List<FileInfo> Analyze(Rule rule) => Analyze(rule, []);
 
     // extra = the user's global Exclude list (Options), applied on top of the rule's own ExcludeKeys.
-    public static List<FileInfo> Analyze(Rule rule, IEnumerable<ExcludeKey> extra)
+    // ct is checked per file, so Cancel stops even a huge RECURSE folder quickly.
+    public static List<FileInfo> Analyze(Rule rule, IEnumerable<ExcludeKey> extra, CancellationToken ct = default)
     {
         var found = new Dictionary<string, FileInfo>(StringComparer.OrdinalIgnoreCase);
         var excludes = FileExcludes(rule.Excludes.Concat(extra));
@@ -31,9 +32,12 @@ public static class Engine
                     try
                     {
                         foreach (var f in new DirectoryInfo(dir).EnumerateFiles(pattern.Trim(), opts))
+                        {
+                            ct.ThrowIfCancellationRequested();
                             if (!(f.LastWriteTimeUtc > cutoff) && !excludes.Any(x => x(f.FullName))
                                 && (key.OlderThanHours == 0 || f.LastWriteTimeUtc < DateTime.UtcNow.AddHours(-key.OlderThanHours)))
                                 found.TryAdd(f.FullName, f);
+                        }
                     }
                     catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
             }

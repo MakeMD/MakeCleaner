@@ -1,6 +1,7 @@
 <Solution>
   <Folder Name="/src/">
     <Project Path="src/MakeCleaner.Core/MakeCleaner.Core.csproj" />
+    <Project Path="src/MakeCleaner.Wpf/MakeCleaner.Wpf.csproj" />
     <Project Path="src/MakeCleaner/MakeCleaner.csproj" />
   </Folder>
   <Folder Name="/tests/">

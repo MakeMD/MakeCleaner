@@ -1,5 +1,5 @@
 # MakeCleaner release: dotnet publish -> portable zip -> Inno Setup installer, all into dist\.
-# Version comes from src\MakeCleaner\MakeCleaner.csproj (<Version>) - the only place it lives. Pure ASCII (PS 5.1).
+# Version comes from Directory.Build.props (<Version>) - the only place it lives. Pure ASCII (PS 5.1).
 # ponytail: no icon, no signing, no CI - one script, native calls (same shape as Projects\MakePack\tools\build.ps1).
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent
