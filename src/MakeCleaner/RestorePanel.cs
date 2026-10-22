@@ -24,7 +24,7 @@ public class RestorePanel : UserControl
 
         view.SelectedIndexChanged += (_, _) => remove.Enabled = Picked() is { } p && CanRemove(p, points);
         remove.Click += (_, _) => Remove();
-        admin.Click += (_, _) => { if (Elevation.RelaunchAsAdmin()) Application.Exit(); };
+        admin.Click += (_, _) => { if (Elevated.RelaunchAsAdmin()) Application.Exit(); };
         Load += (_, _) => Reload();
     }
 
@@ -47,7 +47,7 @@ public class RestorePanel : UserControl
         if (Picked() is not { } p || !CanRemove(p, points)) return;
         if (MessageBox.Show(this, $"Remove restore point \"{p.Description}\"?", "System Restore",
                 MessageBoxButtons.OKCancel, MessageBoxIcon.Warning) != DialogResult.OK) return;
-        if (!Elevation.Require(this, "Removing a restore point")) return;
+        if (!Elevated.Require(this, "Removing a restore point")) return;
         var rc = SRRemoveRestorePoint(p.Seq);
         Reload();
         if (rc != 0) status.Text = $"Removing failed (error {rc}).";

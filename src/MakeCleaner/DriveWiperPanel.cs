@@ -72,7 +72,7 @@ public class DriveWiperPanel : UserControl
         {
             var refused = targets.Select(d => CheckErasable(d.Name, SystemRoot, Path.GetPathRoot(AppContext.BaseDirectory)!)).FirstOrDefault(r => r != null);
             if (refused != null) { MessageBox.Show(this, refused, "Drive Wiper", MessageBoxButtons.OK, MessageBoxIcon.Stop); return; }
-            if (!Elevation.Require(this, "Erasing an entire drive")) return;
+            if (!Elevated.Require(this, "Erasing an entire drive")) return;
             var names = string.Join(", ", targets.Select(d => d.Name));
             if (Prompt($"All data on {names} will be permanently erased.\nType {ConfirmWord} to continue:") != ConfirmWord) return;
         }

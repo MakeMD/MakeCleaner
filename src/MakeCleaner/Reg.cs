@@ -60,30 +60,64 @@ public static class Reg
         var (hive, sub) = Split(key);
         RegistryKey.OpenBaseKey(hive, RegistryView.Registry64).DeleteSubKeyTree(sub, false);
     }, "reg.exe", $"delete \"{key}\" /f /reg:64");
-}
 
-public static class Elevated
-{
-    // Runs a system tool elevated (UAC prompt only now). False if the user declined or the tool failed.
-    public static bool Run(string exe, string args)
+    static (RegistryHive hive, string sub)? TrySplit(string key)
+    {
+        var cut = key.IndexOf('\\');
+        var root = (cut < 0 ? key : key[..cut]).ToUpperInvariant();
+        var sub = cut < 0 ? "" : key[(cut + 1)..].TrimEnd('\\');
+        RegistryHive? hive = root switch
+        {
+            "HKCU" or "HKEY_CURRENT_USER" => RegistryHive.CurrentUser,
+            "HKLM" or "HKEY_LOCAL_MACHINE" => RegistryHive.LocalMachine,
+            "HKCR" or "HKEY_CLASSES_ROOT" => RegistryHive.ClassesRoot,
+            "HKU" or "HKEY_USERS" => RegistryHive.Users,
+            _ => null,
+        };
+        return hive == null || sub.Length == 0 ? null : (hive.Value, sub); // never a whole hive
+    }
+
+    // Non-throwing variant for rule detection/cleaning: null on missing key, bad hive or access denied.
+    static RegistryKey? TryOpen(string key, bool writable = false, RegistryView view = RegistryView.Default)
+    {
+        if (TrySplit(key) is not var (hive, sub)) return null;
+        try { return RegistryKey.OpenBaseKey(hive, view).OpenSubKey(sub, writable); }
+        catch (Exception e) when (e is System.Security.SecurityException or UnauthorizedAccessException or IOException) { return null; }
+    }
+
+    // Detect checks both views: 32-bit apps live under WOW6432Node.
+    public static bool KeyExists(string key)
+    {
+        foreach (var view in new[] { RegistryView.Registry64, RegistryView.Registry32 })
+            using (var k = TryOpen(key, false, view))
+                if (k != null) return true;
+        return false;
+    }
+
+    public static bool Exists(RegKey t)
+    {
+        using var k = TryOpen(t.Key);
+        return k != null && (t.Value == null || k.GetValueNames().Contains(t.Value, StringComparer.OrdinalIgnoreCase));
+    }
+
+    public static bool Delete(RegKey t)
     {
         try
         {
-            using var p = Process.Start(new ProcessStartInfo(exe, args)
+            if (t.Value != null)
             {
-                UseShellExecute = true,
-                Verb = "runas",
-                WindowStyle = ProcessWindowStyle.Hidden,
-            })!;
-            p.WaitForExit();
-            return p.ExitCode == 0;
+                using var k = TryOpen(t.Key, writable: true);
+                if (k == null) return false;
+                k.DeleteValue(t.Value, throwOnMissingValue: false);
+                return true;
+            }
+            var cut = t.Key.LastIndexOf('\\');
+            if (cut < 0) return false;
+            using var parent = TryOpen(t.Key[..cut], writable: true); // null for a bare hive: top-level keys are never deleted
+            if (parent == null) return false;
+            parent.DeleteSubKeyTree(t.Key[(cut + 1)..], throwOnMissingSubKey: false);
+            return true;
         }
-        catch (Win32Exception) { return false; } // UAC declined
-    }
-
-    public static bool Try(Action direct, string exe, string args)
-    {
-        try { direct(); return true; }
-        catch (Exception e) when (e is UnauthorizedAccessException or SecurityException) { return Run(exe, args); }
+        catch (Exception e) when (e is System.Security.SecurityException or UnauthorizedAccessException or IOException or ArgumentException) { return false; }
     }
 }
