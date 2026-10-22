@@ -56,6 +56,9 @@ public class Rule
     public List<string> Detect { get; } = [];
     public List<string> DetectFile { get; } = [];
     public List<string> SpecialDetect { get; } = [];
+    public List<string> SpecialKeys { get; } = [];
+    public string? AgeOption { get; set; }      // Options key; when on, only files older than 24h
+    public int? OlderThanHours { get; set; }    // set from AgeOption right before Analyze
 
     // Public winapp2 LangSecRef groups; Section= (free text) wins when present.
     public string Group => Section ?? LangSecRef switch
@@ -93,6 +96,8 @@ public class Rule
                 case "detect": cur.Detect.Add(val); break;
                 case "detectfile": cur.DetectFile.Add(val); break;
                 case "specialdetect": cur.SpecialDetect.Add(val); break;
+                case "specialkey": cur.SpecialKeys.Add(val); break;
+                case "ageoption": cur.AgeOption = val; break;
                 case "detectos": cur.DetectOS = val; break;
                 case "default": cur.Default = val.Equals("true", StringComparison.OrdinalIgnoreCase); break;
                 case "warning": cur.Warning = val; break;

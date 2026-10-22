@@ -73,7 +73,7 @@ public class EngineTests : IDisposable
     [Fact]
     public void Builtin_temp_rule_targets_temp_recursively()
     {
-        var key = Assert.Single(One(Engine.BuiltInRules).FileKeys);
+        var key = Assert.Single(Rule.ParseIni(Engine.BuiltInRules).Single(r => r.Name == "Temporary Files").FileKeys);
         Assert.Equal(("%TEMP%", true), (key.Path, key.Recurse));
     }
 

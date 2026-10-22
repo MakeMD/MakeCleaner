@@ -4,7 +4,7 @@ public class MainForm : Form
 {
     readonly Settings settings;
     readonly List<Rule> rules = Rule.ParseIni(Engine.BuiltInRules);
-    readonly CheckedListBox items = new() { Dock = DockStyle.Fill, CheckOnClick = true };
+    readonly TreeView windows = new() { Dock = DockStyle.Fill, CheckBoxes = true, Name = "windows" };
     readonly TreeView apps = new() { Dock = DockStyle.Fill, CheckBoxes = true, Name = "apps" };
     readonly TabControl cleanTabs = new() { Dock = DockStyle.Left, Width = 300 };
     readonly ListView results = new() { Dock = DockStyle.Fill, View = View.Details, FullRowSelect = true };
@@ -15,6 +15,7 @@ public class MainForm : Form
     List<Rule> scanned = [];
     List<FileInfo> found = [];
     List<RegKey> foundReg = [];
+    List<Pending> foundActions = [];
 
     public MainForm(Settings settings)
     {
@@ -23,17 +24,10 @@ public class MainForm : Form
         ClientSize = new Size(1000, 600);
         StartPosition = FormStartPosition.CenterScreen;
 
-        foreach (var r in rules) items.Items.Add(r.Name, settings.GetBool(r.Name, r.Default));
-        items.Items.Add(WipeItem, false); // ponytail: never persisted, always starts off
-        items.ItemCheck += (_, e) =>
-        {
-            if (e.Index == rules.Count && e.NewValue == CheckState.Checked && MessageBox.Show(this,
-                    "Wipe Free Space overwrites all free space on the system drive. It is slow, temporarily fills the drive " +
-                    "and wears SSDs. Continue?", "MakeCleaner", MessageBoxButtons.OKCancel, MessageBoxIcon.Warning) != DialogResult.OK)
-                e.NewValue = CheckState.Unchecked;
-        };
+        Fill(windows, rules.Where(r => r.IsDetected()));
+        windows.ExpandAll();
         var winPage = new TabPage("Windows");
-        winPage.Controls.Add(items);
+        winPage.Controls.Add(windows);
         var appPage = new TabPage("Applications");
         appPage.Controls.Add(apps);
         cleanTabs.TabPages.AddRange([winPage, appPage]);
@@ -58,33 +52,39 @@ public class MainForm : Form
             "MakeCleaner - no telemetry, no ads, no network access.\n\n" +
             "Applications rules: Winapp2.ini by the Winapp2 project (github.com/MoscaDotTo/Winapp2), " +
             "licensed CC BY-SA 4.0, shipped unmodified in rules\\Winapp2.ini.", "About MakeCleaner");
-        apps.BeforeCheck += ConfirmWarning;
-        apps.AfterCheck += (_, e) =>
+        foreach (var tree in new[] { windows, apps })
         {
-            if (e.Action == TreeViewAction.Unknown) return; // programmatic: no cascade loops
-            foreach (TreeNode child in e.Node!.Nodes) child.Checked = e.Node.Checked;
-        };
+            tree.BeforeCheck += ConfirmWarning;
+            tree.AfterCheck += (_, e) =>
+            {
+                if (e.Action == TreeViewAction.Unknown) return; // programmatic: no cascade loops
+                foreach (TreeNode child in e.Node!.Nodes) child.Checked = e.Node.Checked;
+            };
+        }
         Load += async (_, _) => await LoadApps();
         FormClosing += (_, _) => SaveChecks();
     }
-
-    const string WipeItem = "Wipe Free Space";
-    bool WipeChecked => items.GetItemChecked(rules.Count);
 
     async Task LoadApps()
     {
         status.Text = "Detecting installed applications...";
         var list = await Task.Run(() => Rule.LoadApplications(AppContext.BaseDirectory));
-        apps.BeginUpdate();
+        Fill(apps, list);
+        status.Text = $"{list.Count} applications detected";
+    }
+
+    // One group node per Rule.Group (in rule order), one checkbox per rule.
+    void Fill(TreeView tree, IEnumerable<Rule> list)
+    {
+        tree.BeginUpdate();
         foreach (var g in list.GroupBy(r => r.Group))
         {
-            var group = apps.Nodes.Add(g.Key);
+            var group = tree.Nodes.Add(g.Key);
             foreach (var r in g)
                 group.Nodes.Add(new TreeNode(r.Name) { Tag = r, Checked = settings.GetBool(r.Name, r.Default) });
             group.Checked = group.Nodes.Cast<TreeNode>().All(n => n.Checked);
         }
-        apps.EndUpdate();
-        status.Text = $"{list.Count} applications detected";
+        tree.EndUpdate();
     }
 
     // Entries with Warning= need an explicit yes before they get ticked.
@@ -94,18 +94,22 @@ public class MainForm : Form
         e.Cancel = MessageBox.Show(this, w, r.Name, MessageBoxButtons.OKCancel, MessageBoxIcon.Warning) != DialogResult.OK;
     }
 
-    IEnumerable<TreeNode> Leaves() => apps.Nodes.Cast<TreeNode>().SelectMany(g => g.Nodes.Cast<TreeNode>());
+    IEnumerable<TreeNode> Leaves() =>
+        new[] { windows, apps }.SelectMany(t => t.Nodes.Cast<TreeNode>()).SelectMany(g => g.Nodes.Cast<TreeNode>());
 
-    List<Rule> Checked() =>
-        [.. rules.Where((_, i) => items.GetItemChecked(i)), .. Leaves().Where(n => n.Checked).Select(n => (Rule)n.Tag!)];
+    List<Rule> Checked() => [.. Leaves().Where(n => n.Checked).Select(n => (Rule)n.Tag!)];
+
+    bool WipeChecked => scanned.Any(r => r.SpecialKeys.Contains(Special.WipeFreeSpace, StringComparer.OrdinalIgnoreCase));
 
     async Task RunAnalyze()
     {
         SetBusy(true, "Analyzing...");
         scanned = Checked();
+        foreach (var r in scanned) r.OlderThanHours = r.AgeOption != null && settings.GetBool(r.AgeOption, false) ? 24 : null;
         var selected = scanned;
-        (found, foundReg) = await Task.Run(() => (selected.SelectMany(Engine.Analyze).DistinctBy(f => f.FullName).ToList(),
-                                                  selected.SelectMany(Engine.AnalyzeRegistry).Distinct().ToList()));
+        (found, foundReg, foundActions) = await Task.Run(() => (selected.SelectMany(Engine.Analyze).DistinctBy(f => f.FullName).ToList(),
+                                                                selected.SelectMany(Engine.AnalyzeRegistry).Distinct().ToList(),
+                                                                selected.SelectMany(Engine.AnalyzeActions).ToList()));
         results.BeginUpdate();
         results.Items.Clear();
         // ponytail: ListView capped at 5000 rows; virtual mode if lists get huge
@@ -113,26 +117,30 @@ public class MainForm : Form
             results.Items.Add(new ListViewItem([f.FullName, Fmt(f.Length)]));
         foreach (var t in foundReg.Take(5000))
             results.Items.Add(new ListViewItem([t.ToString(), ""]));
+        foreach (var a in foundActions)
+            results.Items.Add(new ListViewItem([a.Label, a.Bytes > 0 ? Fmt(a.Bytes) : ""]));
         results.EndUpdate();
         SetBusy(false, $"Analysis complete: {found.Count} files, {Fmt(found.Sum(f => f.Length))} to be removed, {foundReg.Count} registry entries"
-            + (WipeChecked ? " + free space wipe" : ""));
-        clean.Enabled = found.Count + foundReg.Count > 0 || WipeChecked;
+            + (foundActions.Count > 0 ? $", {foundActions.Count} other items" : "") + (WipeChecked ? " + free space wipe" : ""));
+        clean.Enabled = found.Count + foundReg.Count + foundActions.Count > 0 || WipeChecked;
     }
 
     async Task RunClean()
     {
         SetBusy(true, "Cleaning...");
-        var (toDelete, toDeleteReg, ruleSet) = (found, foundReg, scanned);
+        var (toDelete, toDeleteReg, toRun, ruleSet) = (found, foundReg, foundActions, scanned);
         var passes = settings.GetInt(OptionsPanel.SecureDeleteKey, 0);
-        var (r, rr) = await Task.Run(() =>
+        var (r, rr, ra) = await Task.Run(() =>
         {
             var fr = Engine.Clean(toDelete, passes);
             var reg = Engine.CleanRegistry(toDeleteReg);
+            var act = Engine.RunActions(toRun);
             foreach (var rule in ruleSet) Engine.RemoveEmptyDirs(rule);
-            return (fr, reg);
+            return (fr, reg, act);
         });
         found = [];
         foundReg = [];
+        foundActions = [];
         results.Items.Clear();
         var wiped = "";
         if (WipeChecked)
@@ -146,7 +154,8 @@ public class MainForm : Form
             }
             catch (Exception e) when (e is IOException or UnauthorizedAccessException) { wiped = ", free space wipe failed: " + e.Message; }
         }
-        SetBusy(false, $"Cleaning complete: {r.Deleted} files removed, {Fmt(r.BytesFreed)} freed, {r.Skipped} skipped (in use), {rr.Deleted} registry entries removed, {rr.Skipped} skipped{wiped}");
+        SetBusy(false, $"Cleaning complete: {r.Deleted} files removed, {Fmt(r.BytesFreed)} freed, {r.Skipped} skipped (in use), {rr.Deleted} registry entries removed, {rr.Skipped} skipped"
+            + (ra.Deleted + ra.Skipped > 0 ? $", {ra.Deleted} other items done" + (ra.Skipped > 0 ? $" ({ra.Skipped} failed)" : "") : "") + wiped);
         clean.Enabled = false;
     }
 
@@ -160,8 +169,9 @@ public class MainForm : Form
 
     void SaveChecks()
     {
-        for (int i = 0; i < rules.Count; i++) settings.Set(rules[i].Name, items.GetItemChecked(i));
-        foreach (var n in Leaves()) settings.Set(((Rule)n.Tag!).Name, n.Checked);
+        foreach (var n in Leaves())
+            if (n.Tag is Rule r && !r.SpecialKeys.Contains(Special.WipeFreeSpace, StringComparer.OrdinalIgnoreCase)) // wipe always starts off
+                settings.Set(r.Name, n.Checked);
         settings.Save();
     }
 

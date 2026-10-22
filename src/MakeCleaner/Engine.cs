@@ -4,16 +4,15 @@ public record CleanResult(int Deleted, long BytesFreed, int Skipped);
 
 public static class Engine
 {
-    public const string BuiltInRules = """
-        [Temporary Files]
-        Default=True
-        FileKey1=%TEMP%|*.*|RECURSE
-        """;
+    // Windows tab rules (rules\Windows.ini), embedded so the tab can never go missing.
+    public static string BuiltInRules { get; } = new StreamReader(
+        typeof(Engine).Assembly.GetManifestResourceStream("Windows.ini")!).ReadToEnd();
 
     public static List<FileInfo> Analyze(Rule rule)
     {
         var found = new Dictionary<string, FileInfo>(StringComparer.OrdinalIgnoreCase);
         var excludes = FileExcludes(rule);
+        DateTime? cutoff = rule.OlderThanHours is int h ? DateTime.UtcNow.AddHours(-h) : null;
         foreach (var key in rule.FileKeys)
             foreach (var dir in Paths.ExpandDirs(key.Path)) // unknown env var or missing folder -> nothing
             {
@@ -29,11 +28,26 @@ public static class Engine
                     try
                     {
                         foreach (var f in new DirectoryInfo(dir).EnumerateFiles(pattern.Trim(), opts))
-                            if (!excludes.Any(x => x(f.FullName))) found.TryAdd(f.FullName, f);
+                            if (!(f.LastWriteTimeUtc > cutoff) && !excludes.Any(x => x(f.FullName))) found.TryAdd(f.FullName, f);
                     }
                     catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
             }
+        foreach (var k in rule.SpecialKeys)
+            if (Special.Files.TryGetValue(k, out var proc))
+                foreach (var f in proc(rule))
+                    if (!excludes.Any(x => x(f.FullName))) found.TryAdd(f.FullName, f);
         return [.. found.Values];
+    }
+
+    public static List<Pending> AnalyzeActions(Rule rule) =>
+        [.. rule.SpecialKeys.Select(k => Special.Actions.TryGetValue(k, out var a) ? a() : null).OfType<Pending>()];
+
+    public static CleanResult RunActions(IEnumerable<Pending> actions)
+    {
+        int ok = 0, failed = 0;
+        foreach (var a in actions)
+            if (a.Run()) ok++; else failed++;
+        return new CleanResult(ok, 0, failed);
     }
 
     // FILE: name match directly in dir; PATH: anywhere under dir (no patterns = everything).
@@ -73,6 +87,7 @@ public static class Engine
     public static int RemoveEmptyDirs(Rule rule)
     {
         int removed = 0;
+        Special.AfterClean(rule);
         foreach (var key in rule.FileKeys.Where(k => k.RemoveSelf))
             foreach (var dir in Paths.ExpandDirs(key.Path))
             {

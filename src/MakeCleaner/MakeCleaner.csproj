@@ -10,6 +10,8 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <None Remove="rules\Windows.ini" />
+    <EmbeddedResource Include="rules\Windows.ini" LogicalName="Windows.ini" />
     <None Update="rules\**" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 

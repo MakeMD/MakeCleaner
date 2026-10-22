@@ -14,6 +14,9 @@ $fx = Join-Path ([IO.Path]::GetTempPath()) ('mc-smoke-' + [guid]::NewGuid().ToSt
 New-Item -ItemType Directory -Force (Join-Path $fx 'sub') | Out-Null
 'a', 'b', 'sub\c' | ForEach-Object { [IO.File]::WriteAllBytes((Join-Path $fx "$_.tmp"), (New-Object byte[] 1024)) }
 Set-Content (Join-Path $bin 'portable.dat') '#PORTABLE#'
+# Only Temporary Files on: every other Windows-tab rule would touch real user data on Run Cleaner.
+$names = Select-String -Path (Join-Path $root 'src\MakeCleaner\rules\Windows.ini') -Pattern '^\[(.+)\]$' | ForEach-Object { $_.Matches[0].Groups[1].Value }
+Set-Content (Join-Path $bin 'MakeCleaner.ini') (@('[Options]') + ($names | ForEach-Object { "$_=" + ($_ -eq 'Temporary Files') }))
 
 function Status($w) { $w.FindFirst([System.Windows.Automation.TreeScope]::Descendants, (New-Object System.Windows.Automation.PropertyCondition($AT::AutomationIdProperty, 'status'))).Current.Name }
 function Click($w, $id) { $w.FindFirst([System.Windows.Automation.TreeScope]::Descendants, (New-Object System.Windows.Automation.PropertyCondition($AT::AutomationIdProperty, $id))).GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke() }
