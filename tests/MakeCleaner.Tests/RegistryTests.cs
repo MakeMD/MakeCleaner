@@ -203,6 +203,76 @@ public class RegistryTests : IDisposable
         Assert.Empty(Scanner.Scan(RegScanner.Categories, []));
     }
 
+    // HKLM/HKCR entries are not writable for a normal user. Simulated with a Deny ACL on test keys: the direct delete
+    // fails, everything denied goes into one elevated import, and the result is the registry's real state afterwards.
+    [Fact]
+    public void Denied_entries_go_through_one_elevated_import()
+    {
+        string whole = $@"{branch}\LockedKey", withValue = $@"{branch}\LockedValue";
+        Registry.CurrentUser.CreateSubKey(whole).Dispose();
+        using (var k = Registry.CurrentUser.CreateSubKey(withValue)) k.SetValue("stale", "x");
+        List<RegIssue> issues =
+        [
+            new("t", "t", "", $@"HKEY_CURRENT_USER\{whole}", null),
+            new("t", "t", "", $@"HKEY_CURRENT_USER\{withValue}", "stale"),
+        ];
+        try
+        {
+            Deny(whole, true);
+            Deny(withValue, true);
+
+            var prompts = 0;
+            Assert.Equal(new RegFix.Result(0, 2), RegFix.Apply(issues, _ => { prompts++; return false; })); // UAC declined
+            Assert.Equal(1, prompts); // one prompt for the whole batch, not one per issue
+            Assert.All(issues, i => Assert.True(RegFix.Exists(i)));
+
+            // "elevated": admin rights are what lift the deny; reg.exe then applies the generated deletion script
+            var log = "";
+            var result = RegFix.Apply(issues, file =>
+            {
+                Deny(whole, false);
+                Deny(withValue, false);
+                using var reg = Process.Start(new ProcessStartInfo("reg.exe", $"import \"{file}\"")
+                    { CreateNoWindow = true, UseShellExecute = false, RedirectStandardError = true })!;
+                log = reg.StandardError.ReadToEnd() + File.ReadAllText(file);
+                reg.WaitForExit();
+                log = $"exit {reg.ExitCode}; key {RegFix.Exists(issues[0])}; value {RegFix.Exists(issues[1])}\n" + log;
+                return reg.ExitCode == 0;
+            });
+            Assert.True(result == new RegFix.Result(2, 0), log);
+            Assert.All(issues, i => Assert.False(RegFix.Exists(i)));
+        }
+        finally
+        {
+            foreach (var p in new[] { whole, withValue })
+                try { Deny(p, false); } catch (NullReferenceException) { } // already deleted
+        }
+    }
+
+    static void Deny(string path, bool on)
+    {
+        using var k = Registry.CurrentUser.OpenSubKey(path, RegistryKeyPermissionCheck.ReadWriteSubTree,
+            System.Security.AccessControl.RegistryRights.ChangePermissions | System.Security.AccessControl.RegistryRights.ReadPermissions)!;
+        var acl = k.GetAccessControl();
+        var rule = new System.Security.AccessControl.RegistryAccessRule(System.Security.Principal.WindowsIdentity.GetCurrent().User!,
+            System.Security.AccessControl.RegistryRights.Delete | System.Security.AccessControl.RegistryRights.SetValue,
+            System.Security.AccessControl.AccessControlType.Deny);
+        if (on) acl.AddAccessRule(rule); else acl.RemoveAccessRuleAll(rule); // all Deny rules for this user, whatever form they were stored in
+        k.SetAccessControl(acl);
+    }
+
+    [Fact]
+    public void Deletion_script_uses_regedit_removal_syntax()
+    {
+        var s = RegFix.DeletionScript([new("t", "t", "", @"HKEY_LOCAL_MACHINE\SOFTWARE\A", null),
+                                       new("t", "t", "", @"HKEY_CLASSES_ROOT\B", "x\"y"),
+                                       new("t", "t", "", @"HKEY_CURRENT_USER\C", "")]);
+        Assert.StartsWith("Windows Registry Editor Version 5.00\r\n", s);
+        Assert.Contains("\r\n[-HKEY_LOCAL_MACHINE\\SOFTWARE\\A]\r\n", s);
+        Assert.Contains("\r\n[HKEY_CLASSES_ROOT\\B]\r\n\"x\\\"y\"=-\r\n", s);
+        Assert.Contains("\r\n[HKEY_CURRENT_USER\\C]\r\n@=-\r\n", s);
+    }
+
     [Fact]
     public void Backup_failure_changes_nothing()
     {

@@ -34,8 +34,7 @@ public partial class RestoreView : UserControl
     void Remove()
     {
         if (Picked() is not { } p || !RestorePoints.CanRemove(p, points)) return;
-        if (MessageBox.Show(Window.GetWindow(this), $"Remove restore point \"{p.Description}\"?", "System Restore",
-                MessageBoxButton.OKCancel, MessageBoxImage.Warning) != MessageBoxResult.OK) return;
+        if (!Dialog.Confirm(this, "System Restore", $"Remove restore point \"{p.Description}\"?", "Remove", DialogKind.Warning)) return;
         if (!ToolsUi.RequireAdmin(this, "Removing a restore point")) return;
         var rc = RestorePoints.Remove(p.Seq);
         Reload();

@@ -133,12 +133,11 @@ public partial class CleanerView : UserControl
         var skipped = new HashSet<string>();
         foreach (var b in pass.RunningBrowsers())
         {
-            var answer = MessageBox.Show(owner, $"{b.Name} is running, so its files are locked.\n\nYes = close {b.Name} now\nNo = skip {b.Name} this time",
-                "MakeCleaner", MessageBoxButton.YesNoCancel, MessageBoxImage.Question);
-            if (answer == MessageBoxResult.Cancel) return null;
-            if (answer == MessageBoxResult.Yes && Browsers.CloseGracefully(b.Running())) continue;
-            if (answer == MessageBoxResult.Yes)
-                MessageBox.Show(owner, $"{b.Name} did not close (maybe an unsaved dialog). Skipping it.", "MakeCleaner", MessageBoxButton.OK, MessageBoxImage.Information);
+            var answer = Dialog.Show(owner, b.Name, $"{b.Name} is running, so its files are locked. Close it now, or leave it out of this clean?",
+                DialogKind.Question, $"Close {b.Name}", "Skip", "Cancel");
+            if (answer is 2 or -1) return null;
+            if (answer == 0 && Browsers.CloseGracefully(b.Running())) continue;
+            if (answer == 0) Dialog.Info(owner, b.Name, $"{b.Name} did not close (maybe an unsaved dialog). Skipping it.");
             skipped.Add(b.Name);
         }
         return skipped;

@@ -370,16 +370,18 @@ public static class RegFix
 {
     public record Result(int Fixed, int Failed);
 
-    public static Result Fix(IReadOnlyList<RegIssue> issues, string backupPath)
+    public static Result Fix(IReadOnlyList<RegIssue> issues, string backupPath, Func<string, bool>? importElevated = null)
     {
         WriteBackup(issues, backupPath); // throws before any change if the backup can't be written
-        return Apply(issues);
+        return Apply(issues, importElevated);
     }
 
     // Removes the issues. Only for callers that already wrote the backup of all of them (the fix-by-fix dialog).
-    public static Result Apply(IReadOnlyList<RegIssue> issues)
+    // Most issues live in HKLM/HKCR, which a normal user cannot write: whatever is denied goes into one deletion .reg
+    // imported elevated, so a whole batch costs one UAC prompt. The result is the registry's real state afterwards,
+    // never "we tried": an issue counts as fixed only when its key/value is gone.
+    public static Result Apply(IReadOnlyList<RegIssue> issues, Func<string, bool>? importElevated = null)
     {
-        int ok = 0, failed = 0;
         foreach (var i in issues)
         {
             try
@@ -395,14 +397,51 @@ public static class RegFix
                     using var k = OpenKey(i.KeyPath, writable: true);
                     k?.DeleteValue(i.ValueName, throwOnMissingValue: false);
                 }
-                ok++;
             }
-            catch (Exception e) when (e is UnauthorizedAccessException or System.Security.SecurityException or IOException)
-            {
-                failed++;
-            }
+            catch (Exception e) when (e is UnauthorizedAccessException or System.Security.SecurityException or IOException) { }
         }
-        return new Result(ok, failed);
+        // Decide by what is still there, not by exceptions: DeleteSubKeyTree(throwOnMissingSubKey: false) silently does
+        // nothing when the key can't be opened for writing (access denied looks like "missing" to it).
+        var denied = issues.Where(Exists).ToList();
+        if (denied.Count > 0)
+        {
+            var tmp = Path.Combine(Path.GetTempPath(), $"MakeCleaner-fix-{Guid.NewGuid():N}.reg");
+            try
+            {
+                File.WriteAllText(tmp, DeletionScript(denied), Encoding.Unicode);
+                (importElevated ?? ImportElevated)(tmp);
+            }
+            finally { File.Delete(tmp); }
+        }
+        var fixedCount = issues.Count(i => !Exists(i));
+        return new Result(fixedCount, issues.Count - fixedCount);
+    }
+
+    // false = UAC declined or reg.exe failed; Apply re-reads the registry either way.
+    static bool ImportElevated(string regFile) => Elevated.Run("reg.exe", $"import \"{regFile}\" /reg:64");
+
+    // regedit syntax for removal: [-key] deletes a key tree, "name"=- / @=- deletes one value.
+    public static string DeletionScript(IEnumerable<RegIssue> issues)
+    {
+        var sb = new StringBuilder("Windows Registry Editor Version 5.00\r\n");
+        foreach (var i in issues)
+            sb.Append(i.ValueName == null
+                ? $"\r\n[-{i.KeyPath}]\r\n"
+                : $"\r\n[{i.KeyPath}]\r\n{(i.ValueName == "" ? "@" : $"\"{Esc(i.ValueName)}\"")}=-\r\n");
+        return sb.ToString();
+    }
+
+    public static bool Exists(RegIssue i)
+    {
+        try
+        {
+            using var k = OpenKey(i.KeyPath, writable: false);
+            return k != null && (i.ValueName == null || k.GetValueNames().Contains(i.ValueName, StringComparer.OrdinalIgnoreCase));
+        }
+        catch (Exception e) when (e is UnauthorizedAccessException or System.Security.SecurityException or IOException)
+        {
+            return true; // can't even read it: certainly not fixed
+        }
     }
 
     public static string DefaultBackupName(DateTime now) => $"MakeCleaner_registry_{now:yyyyMMdd_HHmmss}.reg";

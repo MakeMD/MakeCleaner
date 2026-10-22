@@ -41,14 +41,14 @@ public static class ToolsUi
         public void Report(int v) => Volatile.Write(ref value, v);
     }
 
+    // The title doubles as the action button ("Delete", "Delete entry").
     public static bool Confirm(DependencyObject owner, string text, string title) =>
-        MessageBox.Show(Window.GetWindow(owner), text, title, MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No) == MessageBoxResult.Yes;
+        Dialog.Confirm(owner, title, text, title, DialogKind.Warning);
 
     public static bool ConfirmDelete(DependencyObject owner, int count) =>
-        Confirm(owner, $"Delete {count} file(s)? This cannot be undone.", "MakeCleaner");
+        Dialog.Confirm(owner, "Delete files", $"Delete {count} file(s)? This cannot be undone.", "Delete", DialogKind.Warning);
 
-    public static void Info(DependencyObject owner, string text, string title) =>
-        MessageBox.Show(Window.GetWindow(owner), text, title);
+    public static void Info(DependencyObject owner, string text, string title) => Dialog.Info(owner, title, text);
 
     public static void OpenFolder(string file) => Process.Start("explorer.exe", $"/select,\"{file}\"");
 
@@ -70,8 +70,8 @@ public static class ToolsUi
     public static bool RequireAdmin(DependencyObject owner, string what)
     {
         if (Elevated.IsAdmin) return true;
-        if (MessageBox.Show(Window.GetWindow(owner), $"{what} requires administrator rights. Restart MakeCleaner as administrator?",
-                "MakeCleaner", MessageBoxButton.OKCancel, MessageBoxImage.Information) == MessageBoxResult.OK
+        if (Dialog.Confirm(owner, "Administrator rights", $"{what} requires administrator rights. Restart MakeCleaner as administrator?",
+                "Restart as administrator")
             && Elevated.RelaunchAsAdmin())
             Application.Current.Shutdown();
         return false;

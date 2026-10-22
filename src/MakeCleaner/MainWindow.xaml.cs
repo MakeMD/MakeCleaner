@@ -14,7 +14,7 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         CheckNode.Confirm = (title, warning) =>
-            MessageBox.Show(this, warning, title, MessageBoxButton.OKCancel, MessageBoxImage.Warning) == MessageBoxResult.OK;
+            Dialog.Confirm(this, title, warning, "Turn on", DialogKind.Warning);
 
         cleaner = new CleanerView(settings);
         // Rail sections: Cleaner, Registry, Tools (sub-menu), Options (sub-menu).
@@ -41,7 +41,7 @@ public partial class MainWindow : Window
 
         var v = FileVersionInfo.GetVersionInfo(Environment.ProcessPath!).ProductVersion;
         version.Text = $"MakeCleaner {v}  ·  no telemetry, no ads, no network access";
-        about.Click += (_, _) => MessageBox.Show(this, OptionsPages.AboutText, "About MakeCleaner");
+        about.Click += (_, _) => Dialog.Info(this, "About MakeCleaner", OptionsPages.AboutText);
         Closing += (_, _) => cleaner.SaveChecks();
     }
 }

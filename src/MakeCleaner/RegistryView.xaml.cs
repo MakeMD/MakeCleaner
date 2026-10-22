@@ -110,20 +110,16 @@ public partial class RegistryView : UserControl
         var chosen = rows.Where(r => r.IsChecked).Select(r => r.Issue).ToList();
         if (chosen.Count == 0) { status.Text = "Tick the issues to fix first."; return; }
         var owner = Window.GetWindow(this);
-        if (MessageBox.Show(owner, "A backup of the registry entries is saved before any change, so you can undo the fix by opening the .reg file.\n\nChoose where to save the backup?",
-                "Back up the registry", MessageBoxButton.OKCancel, MessageBoxImage.Question) != MessageBoxResult.OK) return;
-        var dlg = new SaveFileDialog
+        // Backup is mandatory but silent: always written next to the settings, never asked for (no backup -> no fix).
+        var backup = System.IO.Path.Combine(System.IO.Path.GetDirectoryName(settings.Path)!, "RegistryBackups", RegFix.DefaultBackupName(DateTime.Now));
+        try
         {
-            Title = "Back up the registry before fixing (required)",
-            Filter = "Reg Files (*.reg)|*.reg",
-            FileName = RegFix.DefaultBackupName(DateTime.Now),
-            InitialDirectory = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
-        };
-        if (dlg.ShowDialog(owner) != true) return; // no backup -> no fix
-        try { RegFix.WriteBackup(chosen, dlg.FileName); }
+            System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(backup)!);
+            RegFix.WriteBackup(chosen, backup);
+        }
         catch (Exception e) when (e is System.IO.IOException or UnauthorizedAccessException) // WPF drops System.IO from implicit usings
         {
-            MessageBox.Show(owner, $"Backup failed, nothing was changed.\n{e.Message}", "MakeCleaner", MessageBoxButton.OK, MessageBoxImage.Error);
+            Dialog.Info(owner, "Registry backup", $"The backup could not be written, so nothing was changed.\n{e.Message}", DialogKind.Error);
             return;
         }
         var fixer = new RegFixDialog(chosen) { Owner = owner };
@@ -131,7 +127,7 @@ public partial class RegistryView : UserControl
         var done = fixer.Fixed.ToHashSet();
         list.ItemsSource = rows = [.. rows.Where(r => !done.Contains(r.Issue))];
         review.IsEnabled = rows.Count > 0;
-        status.Text = $"Fixed {fixer.Fixed.Count} issues, {fixer.Failed} failed (need admin?). Backup: {dlg.FileName}";
+        status.Text = $"Fixed {fixer.Fixed.Count} issues" + (fixer.Failed > 0 ? $", {fixer.Failed} not fixed" : "") + $". Backup: {backup}";
     }
 
     // Writes the same Exclude list Options shows (REG entries) and drops the key's issues from the list.

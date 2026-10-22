@@ -56,14 +56,13 @@ public partial class DriveWiperView : UserControl
         if (Entire)
         {
             var refused = targets.Select(d => DriveWiper.CheckErasable(d.Name, DriveWiper.SystemRoot, Path.GetPathRoot(AppContext.BaseDirectory)!)).FirstOrDefault(r => r != null);
-            if (refused != null) { MessageBox.Show(owner, refused, "Drive Wiper", MessageBoxButton.OK, MessageBoxImage.Stop); return; }
+            if (refused != null) { Dialog.Info(owner, "Drive Wiper", refused, DialogKind.Error); return; }
             if (!ToolsUi.RequireAdmin(this, "Erasing an entire drive")) return;
             var names = string.Join(", ", targets.Select(d => d.Name));
             if (Prompt(owner, $"All data on {names} will be permanently erased.\nType {ConfirmWord} to continue:") != ConfirmWord) return;
         }
-        else if (MessageBox.Show(owner, $"Wipe free space on {string.Join(", ", targets.Select(d => d.Name))} with {n} pass(es)? " +
-                     "This can take a long time; the drive is temporarily filled.", "Drive Wiper",
-                     MessageBoxButton.OKCancel, MessageBoxImage.Warning) != MessageBoxResult.OK) return;
+        else if (!Dialog.Confirm(owner, "Drive Wiper", $"Wipe free space on {string.Join(", ", targets.Select(d => d.Name))} with {n} pass(es)? " +
+                     "This can take a long time; the drive is temporarily filled.", "Wipe free space", DialogKind.Warning)) return;
 
         cts = new CancellationTokenSource();
         wipe.IsEnabled = false; cancel.IsEnabled = true;
@@ -102,7 +101,8 @@ public partial class DriveWiperView : UserControl
             box, buttons,
         } };
         var dlg = new Window { Title = "Drive Wiper", Content = body, Owner = owner, Width = 440, SizeToContent = SizeToContent.Height,
-            ResizeMode = ResizeMode.NoResize, WindowStartupLocation = WindowStartupLocation.CenterOwner, ShowInTaskbar = false };
+            ResizeMode = ResizeMode.NoResize, WindowStartupLocation = WindowStartupLocation.CenterOwner, ShowInTaskbar = false,
+            Background = (System.Windows.Media.Brush)Application.Current.FindResource("Surface") };
         ok.Click += (_, _) => dlg.DialogResult = true;
         dlg.Loaded += (_, _) => box.Focus();
         return dlg.ShowDialog() == true ? box.Text.Trim() : null;

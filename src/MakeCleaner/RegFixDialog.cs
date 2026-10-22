@@ -53,10 +53,10 @@ public class RegFixDialog : Window
         fixAll.Click += (_, _) =>
         {
             var left = issues.Where(i => !Fixed.Contains(i)).ToList();
-            if (MessageBox.Show(this, $"Fix all {left.Count} remaining issues? The backup you just saved can undo this.",
-                    "Fix All Selected", MessageBoxButton.OKCancel, MessageBoxImage.Warning) != MessageBoxResult.OK) return;
+            if (!Dialog.Confirm(this, "Fix All Selected", $"Fix all {left.Count} remaining issues? The backup you just saved can undo this.",
+                    "Fix all", DialogKind.Warning)) return;
             Apply(left);
-            Close();
+            if (failed.Count == 0) Close(); else Show(issues.IndexOf(failed.First())); // stay: show what is still broken
         };
         Show(0);
     }
@@ -68,11 +68,13 @@ public class RegFixDialog : Window
         return b;
     }
 
-    // One at a time, so we know exactly which ones failed (they stay in the walk, unfixed, and can be retried).
+    // One RegFix.Apply per batch (one UAC prompt at most), then the registry itself says which ones are gone;
+    // the rest stay in the walk, unfixed, and can be retried.
     void Apply(List<RegIssue> batch)
     {
+        RegFix.Apply(batch);
         foreach (var i in batch)
-            if (RegFix.Apply([i]).Fixed == 1) { Fixed.Add(i); failed.Remove(i); }
+            if (!RegFix.Exists(i)) { Fixed.Add(i); failed.Remove(i); }
             else failed.Add(i);
     }
 
@@ -81,7 +83,7 @@ public class RegFixDialog : Window
         at = (i + issues.Count) % issues.Count;
         var x = issues[at];
         var done = Fixed.Contains(x);
-        counter.Text = $"Issue {at + 1} of {issues.Count}" + (done ? "  -  fixed" : failed.Contains(x) ? "  -  failed (need admin?)" : "");
+        counter.Text = $"Issue {at + 1} of {issues.Count}" + (done ? "  -  fixed" : failed.Contains(x) ? "  -  not fixed (administrator rights declined?)" : "");
         details.Text = $"Problem: {x.Problem}\nData: {x.Data}\nRegistry key: {x.Target}\n\n" +
                        $"Solution: delete the registry {(x.ValueName == null ? "key" : "value")}.";
         prev.IsEnabled = next.IsEnabled = issues.Count > 1;
