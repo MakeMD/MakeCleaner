@@ -12,7 +12,7 @@ public record RegIssue(string Category, string Problem, string Data, string KeyP
 public record RegCategory(string Name, Func<RegScanner, IEnumerable<RegIssue>> Scan);
 
 // Read-only scanner. hkcu/hklm are the roots to scan: the real hives in the app,
-// a throwaway HKCU\Software\MakeCleanerTest\... branch in tests.
+// a throwaway HKCU\Software\MakeCleanerTest-<guid> branch in tests.
 // Every check is conservative: anything we cannot resolve to a local absolute path is NOT an issue.
 public class RegScanner(RegistryKey hkcu, RegistryKey hklm)
 {

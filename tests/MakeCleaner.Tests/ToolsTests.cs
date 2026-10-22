@@ -1,18 +1,16 @@
 using MakeCleaner;
 using Microsoft.Win32;
 
-// Everything runs under HKCU\Software\MakeCleanerTest\<guid> and a temp folder; nothing real is touched.
+// Everything runs under HKCU\Software\MakeCleanerTest-t08-<guid> and a temp folder; nothing real is touched.
 public class ToolsTests : IDisposable
 {
-    readonly string sub = $@"Software\MakeCleanerTest\t08-{Guid.NewGuid():N}";
+    readonly string sub = $@"Software\MakeCleanerTest-t08-{Guid.NewGuid():N}"; // own top-level branch: see RegistryTests.branch
     readonly string dir = Directory.CreateTempSubdirectory("mc-t08-").FullName;
     string Root => $@"HKCU\{sub}";
 
     public void Dispose()
     {
         Registry.CurrentUser.DeleteSubKeyTree(sub, false);
-        using (var t = Registry.CurrentUser.OpenSubKey(@"Software\MakeCleanerTest", true))
-            if (t != null && t.SubKeyCount == 0 && t.ValueCount == 0) Registry.CurrentUser.DeleteSubKey(@"Software\MakeCleanerTest", false);
         Directory.Delete(dir, true);
     }
 

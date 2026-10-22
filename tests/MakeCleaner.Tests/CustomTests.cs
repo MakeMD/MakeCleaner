@@ -1,20 +1,18 @@
 using MakeCleaner;
 using Microsoft.Win32;
 
-// Options > Include / Exclude and saved checkbox states. Temp folders and HKCU\Software\MakeCleanerTest only.
+// Options > Include / Exclude and saved checkbox states. Temp folders and HKCU\Software\MakeCleanerTest-t04-* only.
 public class CustomTests : IDisposable
 {
     readonly string dir = Directory.CreateTempSubdirectory("mc-t04-").FullName;
     readonly string ini = Directory.CreateTempSubdirectory("mc-t04-ini-").FullName;
-    readonly string sub = $@"Software\MakeCleanerTest\t04-{Guid.NewGuid():N}";
+    readonly string sub = $@"Software\MakeCleanerTest-t04-{Guid.NewGuid():N}"; // own top-level branch: see RegistryTests.branch
 
     public void Dispose()
     {
         Directory.Delete(dir, true);
         Directory.Delete(ini, true);
         Registry.CurrentUser.DeleteSubKeyTree(sub, false);
-        using (var t = Registry.CurrentUser.OpenSubKey(@"Software\MakeCleanerTest", true))
-            if (t != null && t.SubKeyCount == 0 && t.ValueCount == 0) Registry.CurrentUser.DeleteSubKey(@"Software\MakeCleanerTest", false);
     }
 
     string Touch(string rel, int ageHours = 0)

@@ -4,7 +4,7 @@ using Microsoft.Win32;
 public class Winapp2Tests : IDisposable
 {
     readonly string dir = Directory.CreateTempSubdirectory("mc-w2-").FullName;
-    readonly string regRoot = @"Software\MakeCleanerTest\" + Guid.NewGuid().ToString("N");
+    readonly string regRoot = @"Software\MakeCleanerTest-w2-" + Guid.NewGuid().ToString("N"); // own top-level branch: see RegistryTests.branch
     string Hkcu => @"HKCU\" + regRoot;
 
     public void Dispose()

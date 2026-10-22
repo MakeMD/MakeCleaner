@@ -2,11 +2,14 @@ using System.Diagnostics;
 using MakeCleaner;
 using Microsoft.Win32;
 
-// Every test works on its own HKCU\Software\MakeCleanerTest\<guid> branch with fake HKCU/HKLM roots; nothing else is touched.
+// Every test works on its own HKCU\Software\MakeCleanerTest-<guid> branch with fake HKCU/HKLM roots; nothing else is touched.
 public class RegistryTests : IDisposable
 {
-    const string TestRoot = @"Software\MakeCleanerTest";
-    readonly string branch = $@"{TestRoot}\{Guid.NewGuid():N}";
+    // A top-level branch of its own (no shared HKCU\Software\MakeCleanerTest parent): test classes run in parallel, and
+    // "drop the shared parent once it is empty" raced with another class creating its branch there - DeleteSubKey then
+    // threw from Dispose (InvalidOperation, or UnauthorizedAccess from inside .NET's own check), failing whichever test
+    // was finishing, usually a row of the 7-row ExtractPath theory. Nothing shared, nothing to race.
+    readonly string branch = $@"Software\MakeCleanerTest-{Guid.NewGuid():N}";
     readonly RegistryKey hkcu, hklm;
     readonly string dir = Directory.CreateTempSubdirectory("mc-reg-").FullName;
     readonly string missing, existing;
@@ -25,8 +28,6 @@ public class RegistryTests : IDisposable
         hkcu.Dispose();
         hklm.Dispose();
         Registry.CurrentUser.DeleteSubKeyTree(branch, false);
-        using (var t = Registry.CurrentUser.OpenSubKey(TestRoot))
-            if (t is { SubKeyCount: 0 }) Registry.CurrentUser.DeleteSubKey(TestRoot, false);
         Directory.Delete(dir, true);
     }
 
