@@ -25,6 +25,10 @@ public class MainForm : Form
 
         var buttons = new FlowLayoutPanel { Dock = DockStyle.Bottom, Height = 40, FlowDirection = FlowDirection.RightToLeft };
         buttons.Controls.AddRange([clean, analyze]);
+        // ponytail: Registry is its own window until a shared navigation lands
+        var registry = new Button { Text = "Registry...", Width = 110, Name = "registry" };
+        registry.Click += (_, _) => { using var f = new RegistryForm(settings); f.ShowDialog(this); };
+        buttons.Controls.Add(registry);
         Controls.AddRange([results, items, buttons, status]);
 
         analyze.Click += async (_, _) => await RunAnalyze();

@@ -26,6 +26,8 @@ public class Settings
     public bool GetBool(string key, bool fallback) =>
         values.TryGetValue(key, out var v) && bool.TryParse(v, out var b) ? b : fallback;
 
+    public string Get(string key, string fallback = "") => values.TryGetValue(key, out var v) ? v : fallback;
+
     public void Set(string key, object value) => values[key] = value.ToString()!;
 
     public void Save()
