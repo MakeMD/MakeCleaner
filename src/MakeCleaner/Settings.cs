@@ -32,6 +32,19 @@ public class Settings
 
     public void Set(string key, object value) => values[key] = value.ToString()!;
 
+    // Lists as numbered keys: Include1=..., Include2=...
+    public List<string> GetList(string prefix) =>
+        [.. Enumerable.Range(1, int.MaxValue).Select(i => Get(prefix + i)).TakeWhile(v => v.Length > 0)];
+
+    public void SetList(string prefix, IEnumerable<string> items)
+    {
+        foreach (var k in values.Keys.Where(k => k.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)
+                     && int.TryParse(k[prefix.Length..], out _)).ToList())
+            values.Remove(k);
+        var n = 0;
+        foreach (var v in items) values[prefix + ++n] = v;
+    }
+
     public void Save()
     {
         Directory.CreateDirectory(System.IO.Path.GetDirectoryName(Path)!);

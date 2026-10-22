@@ -6,7 +6,6 @@ namespace MakeCleaner;
 // Registry section: Scan -> review -> mandatory .reg backup -> Fix.
 public class RegistryPanel : UserControl
 {
-    const string ExcludeKey = "RegistryExclude"; // '|'-separated key/value paths
     readonly Settings settings;
     readonly CheckedListBox cats = new() { Dock = DockStyle.Left, Width = 220, CheckOnClick = true, Name = "regcats" };
     readonly ListView list = new() { Dock = DockStyle.Fill, View = View.Details, FullRowSelect = true, CheckBoxes = true, Name = "reglist" };
@@ -42,7 +41,8 @@ public class RegistryPanel : UserControl
         fix.Click += (_, _) => RunFix();
     }
 
-    List<string> Excluded() => [.. settings.Get(ExcludeKey).Split('|', StringSplitOptions.RemoveEmptyEntries)];
+    // Shared with Options > Exclude (REG entries).
+    List<string> Excluded() => Custom.RegistryExcludes(settings);
 
     RegIssue? Selected() => list.SelectedItems.Count == 1 ? (RegIssue)list.SelectedItems[0].Tag! : null;
 
@@ -92,8 +92,7 @@ public class RegistryPanel : UserControl
 
     void Exclude(RegIssue i)
     {
-        settings.Set(ExcludeKey, string.Join("|", Excluded().Append(i.Target).Distinct(StringComparer.OrdinalIgnoreCase)));
-        settings.Save();
+        Custom.AddExclude(settings, "REG|" + i.Target);
         foreach (var it in list.Items.Cast<ListViewItem>().Where(it => ((RegIssue)it.Tag!).Target == i.Target).ToList()) list.Items.Remove(it);
         status.Text = $"Excluded: {i.Target}";
     }

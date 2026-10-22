@@ -8,10 +8,13 @@ public static class Engine
     public static string BuiltInRules { get; } = new StreamReader(
         typeof(Engine).Assembly.GetManifestResourceStream("Windows.ini")!).ReadToEnd();
 
-    public static List<FileInfo> Analyze(Rule rule)
+    public static List<FileInfo> Analyze(Rule rule) => Analyze(rule, []);
+
+    // extra = the user's global Exclude list (Options), applied on top of the rule's own ExcludeKeys.
+    public static List<FileInfo> Analyze(Rule rule, IEnumerable<ExcludeKey> extra)
     {
         var found = new Dictionary<string, FileInfo>(StringComparer.OrdinalIgnoreCase);
-        var excludes = FileExcludes(rule);
+        var excludes = FileExcludes(rule.Excludes.Concat(extra));
         DateTime? cutoff = rule.OlderThanHours is int h ? DateTime.UtcNow.AddHours(-h) : null;
         foreach (var key in rule.FileKeys)
             foreach (var dir in Paths.ExpandDirs(key.Path)) // unknown env var or missing folder -> nothing
@@ -28,7 +31,9 @@ public static class Engine
                     try
                     {
                         foreach (var f in new DirectoryInfo(dir).EnumerateFiles(pattern.Trim(), opts))
-                            if (!(f.LastWriteTimeUtc > cutoff) && !excludes.Any(x => x(f.FullName))) found.TryAdd(f.FullName, f);
+                            if (!(f.LastWriteTimeUtc > cutoff) && !excludes.Any(x => x(f.FullName))
+                                && (key.OlderThanHours == 0 || f.LastWriteTimeUtc < DateTime.UtcNow.AddHours(-key.OlderThanHours)))
+                                found.TryAdd(f.FullName, f);
                     }
                     catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
             }
@@ -51,10 +56,10 @@ public static class Engine
     }
 
     // FILE: name match directly in dir; PATH: anywhere under dir (no patterns = everything).
-    static List<Func<string, bool>> FileExcludes(Rule rule)
+    static List<Func<string, bool>> FileExcludes(IEnumerable<ExcludeKey> excludes)
     {
         var list = new List<Func<string, bool>>();
-        foreach (var x in rule.Excludes.Where(x => x.Kind is "FILE" or "PATH"))
+        foreach (var x in excludes.Where(x => x.Kind is "FILE" or "PATH"))
             foreach (var dir in Paths.ExpandDirs(x.Path))
             {
                 var prefix = dir.TrimEnd('\\') + "\\";
@@ -66,9 +71,11 @@ public static class Engine
         return list;
     }
 
-    public static List<RegKey> AnalyzeRegistry(Rule rule)
+    public static List<RegKey> AnalyzeRegistry(Rule rule) => AnalyzeRegistry(rule, []);
+
+    public static List<RegKey> AnalyzeRegistry(Rule rule, IEnumerable<ExcludeKey> extra)
     {
-        var regEx = rule.Excludes.Where(x => x.Kind == "REG").Select(x => RegKey.Parse(x.Path + (x.Patterns.Length > 0 ? "|" + x.Patterns[0] : ""))).ToList();
+        var regEx = rule.Excludes.Concat(extra).Where(x => x.Kind == "REG").Select(x => RegKey.Parse(x.Path + (x.Patterns.Length > 0 ? "|" + x.Patterns[0] : ""))).ToList();
         bool Excluded(RegKey t) => regEx.Any(x =>
             (t.Key.Equals(x.Key, StringComparison.OrdinalIgnoreCase) || t.Key.StartsWith(x.Key.TrimEnd('\\') + "\\", StringComparison.OrdinalIgnoreCase))
             && (x.Value == null || string.Equals(x.Value, t.Value, StringComparison.OrdinalIgnoreCase)));

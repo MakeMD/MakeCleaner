@@ -3,7 +3,7 @@ namespace MakeCleaner;
 public class MainForm : Form
 {
     readonly Settings settings;
-    readonly List<Rule> rules = Rule.ParseIni(Engine.BuiltInRules);
+    readonly List<Rule> rules = [.. Rule.ParseIni(Engine.BuiltInRules), new Rule { Name = Custom.RuleName, Section = "Advanced" }];
     readonly TreeView windows = new() { Dock = DockStyle.Fill, CheckBoxes = true, Name = "windows" };
     readonly TreeView apps = new() { Dock = DockStyle.Fill, CheckBoxes = true, Name = "apps" };
     readonly TabControl cleanTabs = new() { Dock = DockStyle.Left, Width = 300 };
@@ -97,7 +97,9 @@ public class MainForm : Form
     IEnumerable<TreeNode> Leaves() =>
         new[] { windows, apps }.SelectMany(t => t.Nodes.Cast<TreeNode>()).SelectMany(g => g.Nodes.Cast<TreeNode>());
 
-    List<Rule> Checked() => [.. Leaves().Where(n => n.Checked).Select(n => (Rule)n.Tag!)];
+    // The Custom entry is rebuilt from Options > Include each time, so list edits apply without a restart.
+    List<Rule> Checked() =>
+        [.. Leaves().Where(n => n.Checked).Select(n => (Rule)n.Tag!).Select(r => r.Name == Custom.RuleName ? Custom.IncludeRule(settings) : r)];
 
     bool WipeChecked => scanned.Any(r => r.SpecialKeys.Contains(Special.WipeFreeSpace, StringComparer.OrdinalIgnoreCase));
 
@@ -106,9 +108,9 @@ public class MainForm : Form
         SetBusy(true, "Analyzing...");
         scanned = Checked();
         foreach (var r in scanned) r.OlderThanHours = r.AgeOption != null && settings.GetBool(r.AgeOption, false) ? 24 : null;
-        var selected = scanned;
-        (found, foundReg, foundActions) = await Task.Run(() => (selected.SelectMany(Engine.Analyze).DistinctBy(f => f.FullName).ToList(),
-                                                                selected.SelectMany(Engine.AnalyzeRegistry).Distinct().ToList(),
+        var (selected, ex) = (scanned, Custom.Excludes(settings));
+        (found, foundReg, foundActions) = await Task.Run(() => (selected.SelectMany(r => Engine.Analyze(r, ex)).DistinctBy(f => f.FullName).ToList(),
+                                                                selected.SelectMany(r => Engine.AnalyzeRegistry(r, ex)).Distinct().ToList(),
                                                                 selected.SelectMany(Engine.AnalyzeActions).ToList()));
         results.BeginUpdate();
         results.Items.Clear();

@@ -4,9 +4,11 @@
 
 **Blocked by:** 02
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Include-пункти з'являються в Advanced і чистяться через той самий рушій
-- [ ] Exclude застосовується до всіх джерел (вбудовані, Winapp2, Include)
-- [ ] Спроба додати C:\ або %windir% в Include — відмова з поясненням
-- [ ] Стани чекбоксів відновлюються після перезапуску (portable і звичайний режим)
+- [x] Include-пункти з'являються в Advanced і чистяться через той самий рушій (один пункт «Custom Files and Folders» у Cleaner > Windows; групу Advanced додає тікет 03 — при мержі перенести пункт туди)
+- [x] Exclude застосовується до всіх джерел (вбудовані, Winapp2, Include) — і до Registry cleaner: його «Add to Exclude list» тепер пише в той самий список (REG-записи)
+- [x] Спроба додати C:\ або %windir% в Include — відмова з поясненням (також Program Files, ProgramData, Users, профіль, мережеві/відносні шляхи; ini, відредагований вручну, теж фільтрується)
+- [x] Стани чекбоксів відновлюються після перезапуску (portable і звичайний режим — той самий Settings, різниться лише папка)
+
+Нотатки: записи зберігаються в ini як Include1..n / Exclude1..n у синтаксисі winapp2 (FileKey / ExcludeKey); «старше N год» — розширення FileKey `OLDER=N`. Старий ключ `RegistryExclude` більше не читається (релізів ще не було). GUI-смоук: `tools/guismoke-incexc.ps1` (лише Analyze). Звичайний (не portable) режим окремим смоуком не проганявся.
