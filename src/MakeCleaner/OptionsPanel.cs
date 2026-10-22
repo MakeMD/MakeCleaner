@@ -35,7 +35,31 @@ public class OptionsPanel : UserControl
         }
         layout.Controls.Add(IncludeGroup());
         layout.Controls.Add(ExcludeGroup());
+        layout.Controls.Add(ScheduleGroup());
         Controls.Add(layout);
+    }
+
+    // The only way MakeCleaner runs by itself: a task the user creates here and removes here.
+    static GroupBox ScheduleGroup()
+    {
+        var kind = Combo("schedKind", ["Once", "Daily", "Weekly (same weekday)", "At sign-in"], 1, 170);
+        var at = new DateTimePicker { Format = DateTimePickerFormat.Custom, CustomFormat = "yyyy-MM-dd HH:mm", ShowUpDown = true, Width = 150, Name = "schedAt",
+                                      Value = DateTime.Today.AddDays(1).AddHours(12) };
+        var shutdown = new CheckBox { Text = "Shut down the PC afterwards", AutoSize = true, Name = "schedShutdown" };
+        var create = new Button { Text = "Create task", AutoSize = true, Name = "schedCreate" };
+        var remove = new Button { Text = "Remove task", AutoSize = true, Name = "schedRemove" };
+        var status = new Label { AutoSize = true, Name = "schedStatus" };
+        void Show() => status.Text = Schedule.Describe() ?? "No scheduled cleaning.";
+        kind.SelectedIndexChanged += (_, _) => at.Enabled = kind.SelectedIndex != (int)ScheduleKind.AtLogon;
+        create.Click += (_, _) =>
+        {
+            try { Schedule.Create((ScheduleKind)kind.SelectedIndex, at.Value, shutdown.Checked); Show(); }
+            catch (Exception e) when (e is System.Runtime.InteropServices.COMException or UnauthorizedAccessException) { status.Text = "Could not create the task: " + e.Message; }
+        };
+        remove.Click += (_, _) => { Schedule.Delete(); Show(); };
+        Show();
+        return Group("Scheduled cleaning (runs MakeCleaner /auto with the items ticked in Cleaner; Wipe Free Space is never run)",
+            Row(kind, at, shutdown), Row(create, remove), status);
     }
 
     GroupBox IncludeGroup()

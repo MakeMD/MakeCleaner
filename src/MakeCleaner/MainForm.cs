@@ -3,7 +3,7 @@ namespace MakeCleaner;
 public class MainForm : Form
 {
     readonly Settings settings;
-    readonly List<Rule> rules = [.. Rule.ParseIni(Engine.BuiltInRules), new Rule { Name = Custom.RuleName, Section = "Advanced" }];
+    readonly CleanPass pass;
     readonly TreeView windows = new() { Dock = DockStyle.Fill, CheckBoxes = true, Name = "windows" };
     readonly TreeView apps = new() { Dock = DockStyle.Fill, CheckBoxes = true, Name = "apps" };
     readonly TreeView browsers = new() { Dock = DockStyle.Fill, CheckBoxes = true, Name = "browsers" };
@@ -13,20 +13,16 @@ public class MainForm : Form
     readonly Button analyze = new() { Text = "Analyze", Width = 110, Name = "analyze" };
     readonly Button clean = new() { Text = "Run Cleaner", Width = 110, Enabled = false, Name = "clean" };
     readonly LinkLabel about = new() { Text = "About", AutoSize = true, Padding = new Padding(0, 8, 0, 0) };
-    List<Rule> scanned = [];
-    List<FileInfo> found = [];
-    List<RegKey> foundReg = [];
-    List<Pending> foundActions = [];
-    List<(BrowserItem Item, int Count)> foundBrowser = [];
 
     public MainForm(Settings settings)
     {
         this.settings = settings;
+        pass = new CleanPass(settings);
         Text = "MakeCleaner";
         ClientSize = new Size(1000, 600);
         StartPosition = FormStartPosition.CenterScreen;
 
-        Fill(windows, rules.Where(r => r.IsDetected()));
+        Fill(windows, CleanPass.WindowsRules());
         windows.ExpandAll();
         var winPage = new TabPage("Windows");
         winPage.Controls.Add(windows);
@@ -72,9 +68,7 @@ public class MainForm : Form
     async Task LoadApps()
     {
         status.Text = "Detecting installed applications...";
-        // Browsers tab owns these browsers; their Winapp2 sections would be duplicates.
-        var list = await Task.Run(() => Rule.LoadApplications(AppContext.BaseDirectory)
-            .Where(r => !Browsers.ReplacedWinapp2Sections.Contains(r.Section ?? "")).ToList());
+        var list = await Task.Run(CleanPass.AppRules);
         Fill(apps, list);
         // an Analyze/Clean started meanwhile owns the status line; don't overwrite its result
         if (status.Text.StartsWith("Detecting", StringComparison.Ordinal)) status.Text = $"{list.Count} applications detected";
@@ -124,27 +118,19 @@ public class MainForm : Form
 
     static IEnumerable<TreeNode> Leaves(TreeView tree) => tree.Nodes.Cast<TreeNode>().SelectMany(g => g.Nodes.Cast<TreeNode>());
     IEnumerable<TreeNode> Leaves() => Leaves(windows).Concat(Leaves(apps));
+    List<Rule> CheckedRules() => [.. Leaves().Where(n => n.Checked).Select(n => (Rule)n.Tag!)];
     List<BrowserItem> CheckedBrowserItems() => [.. Leaves(browsers).Where(n => n.Checked).Select(n => (BrowserItem)n.Tag!)];
 
-    // The Custom entry is rebuilt from Options > Include each time, so list edits apply without a restart.
-    List<Rule> Checked() =>
-        [.. Leaves().Where(n => n.Checked).Select(n => (Rule)n.Tag!).Select(r => r.Name == Custom.RuleName ? Custom.IncludeRule(settings) : r),
-         .. CheckedBrowserItems().Select(i => i.Files).Where(r => r.FileKeys.Count > 0)];
-
-    bool WipeChecked => scanned.Any(r => r.SpecialKeys.Contains(Special.WipeFreeSpace, StringComparer.OrdinalIgnoreCase));
-
     // Running browser: close it gracefully (no kill) or leave its items out of this clean. null = user cancelled.
-    HashSet<string>? AskAboutRunningBrowsers(IEnumerable<BrowserItem> items)
+    HashSet<string>? AskAboutRunningBrowsers()
     {
         var skipped = new HashSet<string>();
-        foreach (var b in Browsers.Known.Where(b => items.Any(i => i.Browser == b.Name)))
+        foreach (var b in pass.RunningBrowsers())
         {
-            var running = b.Running();
-            if (running.Count == 0) continue;
             var answer = MessageBox.Show(this, $"{b.Name} is running, so its files are locked.\n\nYes = close {b.Name} now\nNo = skip {b.Name} this time",
                 "MakeCleaner", MessageBoxButtons.YesNoCancel, MessageBoxIcon.Question);
             if (answer == DialogResult.Cancel) return null;
-            if (answer == DialogResult.Yes && Browsers.CloseGracefully(running)) continue;
+            if (answer == DialogResult.Yes && Browsers.CloseGracefully(b.Running())) continue;
             if (answer == DialogResult.Yes)
                 MessageBox.Show(this, $"{b.Name} did not close (maybe an unsaved dialog). Skipping it.", "MakeCleaner", MessageBoxButtons.OK, MessageBoxIcon.Information);
             skipped.Add(b.Name);
@@ -155,75 +141,33 @@ public class MainForm : Form
     async Task RunAnalyze()
     {
         SetBusy(true, "Analyzing...");
-        scanned = Checked();
-        foreach (var r in scanned) r.OlderThanHours = r.AgeOption != null && settings.GetBool(r.AgeOption, false) ? 24 : null;
-        var (selected, ex) = (scanned, Custom.Excludes(settings));
-        var browserActions = CheckedBrowserItems().Where(i => i.Action != null).ToList();
-        (found, foundReg, foundActions, foundBrowser) = await Task.Run(() => (
-            selected.SelectMany(r => Engine.Analyze(r, ex)).DistinctBy(f => f.FullName).ToList(),
-            selected.SelectMany(r => Engine.AnalyzeRegistry(r, ex)).Distinct().ToList(),
-            selected.SelectMany(Engine.AnalyzeActions).ToList(),
-            browserActions.Select(i => (i, i.Preview())).Where(a => a.Item2 > 0).ToList()));
+        var (rules, items) = (CheckedRules(), CheckedBrowserItems());
+        await Task.Run(() => pass.Analyze(rules, items));
         results.BeginUpdate();
         results.Items.Clear();
         // ponytail: ListView capped at 5000 rows; virtual mode if lists get huge
-        foreach (var f in found.Take(5000))
+        foreach (var f in pass.Files.Take(5000))
             results.Items.Add(new ListViewItem([f.FullName, Fmt(f.Length)]));
-        foreach (var t in foundReg.Take(5000))
+        foreach (var t in pass.RegKeys.Take(5000))
             results.Items.Add(new ListViewItem([t.ToString(), ""]));
-        foreach (var a in foundActions)
+        foreach (var a in pass.Actions)
             results.Items.Add(new ListViewItem([a.Label, a.Bytes > 0 ? Fmt(a.Bytes) : ""]));
-        foreach (var (i, n) in foundBrowser)
+        foreach (var (i, n) in pass.BrowserRows)
             results.Items.Add(new ListViewItem([i.Key, $"{n} entries"]));
         results.EndUpdate();
-        SetBusy(false, $"Analysis complete: {found.Count} files, {Fmt(found.Sum(f => f.Length))} to be removed, {foundReg.Count} registry entries"
-            + (foundActions.Count > 0 ? $", {foundActions.Count} other items" : "")
-            + (foundBrowser.Count > 0 ? $", {foundBrowser.Sum(a => a.Count)} browser entries" : "")
-            + (WipeChecked ? " + free space wipe" : ""));
-        clean.Enabled = found.Count + foundReg.Count + foundActions.Count + foundBrowser.Count > 0 || WipeChecked;
+        SetBusy(false, pass.AnalyzeSummary());
+        clean.Enabled = pass.Any;
     }
 
     async Task RunClean()
     {
-        var skip = AskAboutRunningBrowsers([.. CheckedBrowserItems(), .. foundBrowser.Select(a => a.Item)]);
+        var skip = AskAboutRunningBrowsers();
         if (skip == null) return;
         SetBusy(true, "Cleaning...");
-        var skipPrefixes = skip.Select(b => b + ": ").ToList();
-        bool Skipped(string ruleName) => skipPrefixes.Any(p => ruleName.StartsWith(p, StringComparison.Ordinal));
-        var (toDelete, toDeleteReg, toRun, ruleSet) = (found, foundReg, foundActions, scanned.Where(r => !Skipped(r.Name)).ToList());
-        var acts = foundBrowser.Select(a => a.Item).Where(i => !skip.Contains(i.Browser)).ToList();
-        var skippedRules = scanned.Where(r => Skipped(r.Name)).ToList();
-        var passes = settings.GetInt(OptionsPanel.SecureDeleteKey, 0);
-        var (r, rr, ra, rb) = await Task.Run(() =>
-        {
-            // a skipped browser keeps its files; everything else goes as analyzed
-            var keep = skippedRules.SelectMany(Engine.Analyze).Select(f => f.FullName).ToHashSet(StringComparer.OrdinalIgnoreCase);
-            var fr = Engine.Clean(toDelete.Where(f => !keep.Contains(f.FullName)), passes);
-            var reg = Engine.CleanRegistry(toDeleteReg);
-            var act = Engine.RunActions(toRun);
-            foreach (var rule in ruleSet) Engine.RemoveEmptyDirs(rule);
-            return (fr, reg, act, acts.Sum(i => i.Run()));
-        });
-        found = [];
-        foundReg = [];
-        foundActions = [];
-        foundBrowser = [];
+        var progress = new Progress<string>(s => status.Text = "Wiping free space... " + s);
+        var summary = await Task.Run(() => pass.Clean(skip, progress));
         results.Items.Clear();
-        var wiped = "";
-        if (WipeChecked)
-        {
-            // %TEMP% lives on the system drive and is writable without admin; other drives: Tools > Drive Wiper
-            var progress = new Progress<string>(s => status.Text = "Wiping free space... " + s);
-            try
-            {
-                await Task.Run(() => SecureDelete.WipeFreeSpace(Path.GetTempPath(), Math.Max(1, passes), progress));
-                wiped = ", free space wiped";
-            }
-            catch (Exception e) when (e is IOException or UnauthorizedAccessException) { wiped = ", free space wipe failed: " + e.Message; }
-        }
-        SetBusy(false, $"Cleaning complete: {r.Deleted} files removed, {Fmt(r.BytesFreed)} freed, {r.Skipped} skipped (in use), {rr.Deleted} registry entries removed, {rr.Skipped} skipped"
-            + (ra.Deleted + ra.Skipped > 0 ? $", {ra.Deleted} other items done" + (ra.Skipped > 0 ? $" ({ra.Skipped} failed)" : "") : "")
-            + (rb > 0 ? $", {rb} browser entries removed" : "") + wiped);
+        SetBusy(false, summary);
         clean.Enabled = false;
     }
 
@@ -238,7 +182,7 @@ public class MainForm : Form
     void SaveChecks()
     {
         foreach (var n in Leaves())
-            if (n.Tag is Rule r && !r.SpecialKeys.Contains(Special.WipeFreeSpace, StringComparer.OrdinalIgnoreCase)) // wipe always starts off
+            if (n.Tag is Rule r && !CleanPass.IsWipe(r)) // wipe always starts off
                 settings.Set(r.Name, n.Checked);
         foreach (var n in Leaves(browsers)) settings.Set(((BrowserItem)n.Tag!).Key, n.Checked);
         settings.Save();
