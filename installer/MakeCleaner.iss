@@ -1,4 +1,4 @@
-; MakeCleaner - per-user installer. Build with tools\release.ps1 (it passes MyAppVersion from the csproj).
+﻿; MakeCleaner - per-user installer. Build with tools\release.ps1 (it passes MyAppVersion from the csproj).
 ; No autostart, no services, no bundled offers, no network. The only system object the app can own is the
 ; scheduled task the user creates in Options; uninstall removes it.
 ; ponytail: no license page, no custom wizard pages, no icon - Inno defaults are enough.
