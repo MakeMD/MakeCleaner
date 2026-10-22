@@ -8,6 +8,8 @@ public class ToolsPanel : UserControl
         var tabs = new TabControl { Dock = DockStyle.Fill, Name = "toolTabs" };
         tabs.TabPages.Add(Page("Uninstall", new UninstallPanel()));
         tabs.TabPages.Add(Page("Startup", new StartupPanel()));
+        tabs.TabPages.Add(Page("Duplicate Finder", new DuplicatesPanel()));
+        tabs.TabPages.Add(Page("Disk Analyzer", new DiskAnalyzerPanel()));
         Controls.Add(tabs);
     }
 

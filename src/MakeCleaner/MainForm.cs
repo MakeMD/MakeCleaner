@@ -80,7 +80,7 @@ public class MainForm : Form
         settings.Save();
     }
 
-    static string Fmt(long b) => b switch
+    internal static string Fmt(long b) => b switch
     {
         >= 1L << 30 => $"{b / (double)(1L << 30):0.##} GB",
         >= 1L << 20 => $"{b / (double)(1L << 20):0.##} MB",
