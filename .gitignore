@@ -1,0 +1,5 @@
+# proprietary RE sample - never commit
+re/sample/
+bin/
+obj/
+.vs/
