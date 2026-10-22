@@ -4,7 +4,7 @@ using Microsoft.Win32;
 namespace MakeCleaner;
 
 // Registry section: Scan -> review -> mandatory .reg backup -> Fix.
-public class RegistryForm : Form
+public class RegistryPanel : UserControl
 {
     const string ExcludeKey = "RegistryExclude"; // '|'-separated key/value paths
     readonly Settings settings;
@@ -15,14 +15,16 @@ public class RegistryForm : Form
     readonly Button fix = new() { Text = "Fix selected...", Width = 130, Enabled = false, Name = "regfix" };
     List<RegIssue> issues = [];
 
-    public RegistryForm(Settings settings)
+    public RegistryPanel(Settings settings)
     {
         this.settings = settings;
-        Text = "MakeCleaner - Registry";
-        ClientSize = new Size(1000, 600);
-        StartPosition = FormStartPosition.CenterParent;
 
         foreach (var c in RegScanner.Categories) cats.Items.Add(c.Name, settings.GetBool("Reg:" + c.Name, true));
+        cats.ItemCheck += (_, e) =>
+        {
+            settings.Set("Reg:" + RegScanner.Categories[e.Index].Name, e.NewValue == CheckState.Checked);
+            settings.Save();
+        };
         list.Columns.Add("Problem", 200);
         list.Columns.Add("Data", 360);
         list.Columns.Add("Registry key", 420);
@@ -38,11 +40,6 @@ public class RegistryForm : Form
 
         scan.Click += async (_, _) => await RunScan();
         fix.Click += (_, _) => RunFix();
-        FormClosing += (_, _) =>
-        {
-            for (int i = 0; i < cats.Items.Count; i++) settings.Set("Reg:" + RegScanner.Categories[i].Name, cats.GetItemChecked(i));
-            settings.Save();
-        };
     }
 
     List<string> Excluded() => [.. settings.Get(ExcludeKey).Split('|', StringSplitOptions.RemoveEmptyEntries)];
@@ -84,7 +81,7 @@ public class RegistryForm : Form
         try { r = RegFix.Fix(chosen, dlg.FileName); }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
-            MessageBox.Show(this, $"Backup failed, nothing was changed.\n{e.Message}", Text, MessageBoxButtons.OK, MessageBoxIcon.Error);
+            MessageBox.Show(this, $"Backup failed, nothing was changed.\n{e.Message}", "MakeCleaner", MessageBoxButtons.OK, MessageBoxIcon.Error);
             return;
         }
         foreach (var it in list.CheckedItems.Cast<ListViewItem>().ToList()) list.Items.Remove(it);
