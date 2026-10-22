@@ -9,4 +9,8 @@
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
   </PropertyGroup>
 
+  <ItemGroup>
+    <None Update="rules\**" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>
