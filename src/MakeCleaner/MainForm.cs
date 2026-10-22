@@ -25,7 +25,11 @@ public class MainForm : Form
 
         var buttons = new FlowLayoutPanel { Dock = DockStyle.Bottom, Height = 40, FlowDirection = FlowDirection.RightToLeft };
         buttons.Controls.AddRange([clean, analyze]);
-        Controls.AddRange([results, items, buttons, status]);
+        var cleaner = new TabPage("Custom Clean");
+        cleaner.Controls.AddRange([results, items, buttons, status]);
+        var nav = new TabControl { Dock = DockStyle.Fill, Name = "nav" };
+        nav.TabPages.AddRange([cleaner, new ToolsPage()]);
+        Controls.Add(nav);
 
         analyze.Click += async (_, _) => await RunAnalyze();
         clean.Click += async (_, _) => await RunClean();
@@ -74,7 +78,7 @@ public class MainForm : Form
         settings.Save();
     }
 
-    static string Fmt(long b) => b switch
+    internal static string Fmt(long b) => b switch
     {
         >= 1L << 30 => $"{b / (double)(1L << 30):0.##} GB",
         >= 1L << 20 => $"{b / (double)(1L << 20):0.##} MB",
