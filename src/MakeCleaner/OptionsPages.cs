@@ -7,8 +7,8 @@ using System.Windows.Media;
 
 namespace MakeCleaner;
 
-// Options: Settings, Include, Exclude, Cookies, Schedule, About. Same Settings keys as the WinForms OptionsPanel,
-// so switching windows keeps every list; saved immediately on change. AutomationIds match the WinForms names.
+// Options: Settings, Include, Exclude, Cookies, Schedule, About. Settings keys are the ones v1.0 (WinForms) used,
+// so an upgrade keeps every list; saved immediately on change. AutomationIds are what tools/*smoke*.ps1 look up.
 public static class OptionsPages
 {
     static readonly string[] IncludeModes = ["Files only", "Files and subfolders", "Files, subfolders and the folder itself"];

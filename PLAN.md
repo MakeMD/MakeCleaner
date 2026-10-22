@@ -13,7 +13,7 @@ Clean-room аналог CCleaner без телеметрії, реклами, б
 
 ## Стек
 
-C# .NET 10 WinForms, single-file exe, як MakePack. Залежності: `Microsoft.Data.Sqlite` (cookie keep-list у Chromium/Firefox). Тести — один xUnit-проєкт. Інсталятор — Inno Setup per-user (досвід MakePack).
+C# .NET 10: бібліотека `MakeCleaner.Core` (уся логіка, без UI) + WPF-застосунок `MakeCleaner.exe` (single-file; нативні DLL WPF і SQLite лежать поруч). До v1.0 UI був на WinForms — з тікета 19 його немає. Залежності: `Microsoft.Data.Sqlite` (cookie keep-list у Chromium/Firefox). Тести — один xUnit-проєкт. Інсталятор — Inno Setup per-user (досвід MakePack).
 
 ## Скоуп
 
@@ -34,7 +34,7 @@ C# .NET 10 WinForms, single-file exe, як MakePack. Залежності: `Micr
 - `Engine/` — Analyze → список цілей (файли/ключі/значення + розмір) → Clean. ExcludeKey і Include/Exclude з налаштувань — фільтр на одному шляху. Built-in процедури (`SpecialKey`) — словник `ім'я → делегат`.
 - `Registry/` — сканери категорій, `.reg`-експорт перед фіксом.
 - `Tools/` — кожен інструмент окремий екран, без спільних абстракцій.
-- `UI/` — WinForms: ліве меню (Clean / Registry / Tools / Options), дерево чекбоксів, звіт.
+- `UI/` — WPF (`src/MakeCleaner`): ліве меню (Cleaner / Registry / Tools / Options), дерево чекбоксів, звіт; див. «Етап 2».
 
 ## Етапи
 
@@ -62,8 +62,8 @@ Cleaner: зліва вкладки Windows / Browsers / Applications над де
 темна тема (кольори — в одному ResourceDictionary, тож додати можна пізніше).
 
 **Як:** expand–contract. Спершу ядро виноситься в бібліотеку `MakeCleaner.Core` без UI (тести бачать лише її); поруч з'являється
-WPF-застосунок і переносить екрани по одному; WinForms-проєкт живе, доки все не перенесено, і видаляється останнім тікетом
-разом з переведенням release/releasecheck/смоуків на WPF. Спільні WPF-частини — лише ті, що потрібні двом і більше екранам:
+WPF-застосунок і переносить екрани по одному; WinForms-проєкт жив, доки все не перенесено, і видалений тікетом 19
+разом з переведенням release/releasecheck/смоуків на WPF (стан: зроблено, у `src` лише Core + WPF). Спільні WPF-частини — лише ті, що потрібні двом і більше екранам:
 сторінка з підменю (Tools, Options), смуга прогресу з Cancel (Cleaner, Registry), колонка кнопок (стиль). AutomationId у WPF
 повторюють нинішні імена, щоб смоуки переносилися з мінімальними змінами.
 

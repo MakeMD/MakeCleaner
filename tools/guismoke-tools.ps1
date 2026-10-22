@@ -1,11 +1,10 @@
 # GUI smoke for Tools > Uninstall / Startup: READ-ONLY. Opens the tabs via UI Automation (no keystrokes),
 # waits for each list to fill, prints row counts, saves screenshots. Never clicks an action button. Pure ASCII (PS 5.1).
-param([int]$Screen = 1, [string]$Config = 'Debug', [string]$BinDir = '', [switch]$Wpf, [string]$ShotDir = $env:TEMP)
+param([int]$Screen = 1, [string]$Config = 'Debug', [string]$BinDir = '', [string]$ShotDir = $env:TEMP)
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
-$app = if ($Wpf) { 'MakeCleaner.Wpf' } else { 'MakeCleaner' } # -Wpf: the WPF window; WinForms stays the default until ticket 19
-$bin = if ($BinDir) { $BinDir } else { Join-Path $root "src\$app\bin\$Config\net10.0-windows" } # -BinDir: a published copy (tools\releasecheck.ps1)
-$exe = Join-Path $bin "$app.exe"
+$bin = if ($BinDir) { $BinDir } else { Join-Path $root "src\MakeCleaner\bin\$Config\net10.0-windows" } # -BinDir: a published copy (tools\releasecheck.ps1)
+$exe = Join-Path $bin 'MakeCleaner.exe'
 . (Join-Path $PSScriptRoot 'screenpin.ps1')
 Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes, System.Drawing
 $AT = [System.Windows.Automation.AutomationElement]
@@ -13,7 +12,7 @@ $TS = [System.Windows.Automation.TreeScope]
 Set-Content (Join-Path $bin 'portable.dat') '#PORTABLE#'  # keep settings next to the exe, cleaned up below
 
 function ById($w, $id) { $w.FindFirst($TS::Descendants, (New-Object System.Windows.Automation.PropertyCondition($AT::AutomationIdProperty, $id))) }
-# WinForms: every level is a tab. WPF: the rail and the Tools sub-menu are list items, Startup kinds are tabs.
+# The rail and the Tools sub-menu are list items; Startup kinds are tabs.
 function SelectTab($w, $name) {
     $kind = New-Object System.Windows.Automation.OrCondition(
         (New-Object System.Windows.Automation.PropertyCondition($AT::ControlTypeProperty, [System.Windows.Automation.ControlType]::TabItem)),
@@ -27,9 +26,7 @@ function Rows($w, $id) {
     for ($i = 0; $i -lt 75; $i++) {
         $l = ById $w $id
         if ($l) {
-            $rows = New-Object System.Windows.Automation.OrCondition( # WinForms ListView rows = ListItem, WPF GridView rows = DataItem
-                (New-Object System.Windows.Automation.PropertyCondition($AT::ControlTypeProperty, [System.Windows.Automation.ControlType]::ListItem)),
-                (New-Object System.Windows.Automation.PropertyCondition($AT::ControlTypeProperty, [System.Windows.Automation.ControlType]::DataItem)))
+            $rows = New-Object System.Windows.Automation.PropertyCondition($AT::ControlTypeProperty, [System.Windows.Automation.ControlType]::DataItem) # GridView rows
             $n = $l.FindAll($TS::Children, $rows).Count
             if ($n -gt 0) { return $n }
         }
@@ -41,7 +38,7 @@ function Shot($w, $name) {
     $r = $w.Current.BoundingRectangle
     $bmp = New-Object System.Drawing.Bitmap ([int]$r.Width), ([int]$r.Height)
     [System.Drawing.Graphics]::FromImage($bmp).CopyFromScreen([int]$r.X, [int]$r.Y, 0, 0, $bmp.Size)
-    $p = Join-Path $ShotDir ("makecleaner-" + $(if ($Wpf) { 'wpf-' } else { '' }) + "$name.png"); $bmp.Save($p); Write-Host "screenshot: $p"
+    $p = Join-Path $ShotDir "makecleaner-$name.png"; $bmp.Save($p); Write-Host "screenshot: $p"
 }
 
 Start-ScreenPin -Screen $Screen -Exe $exe

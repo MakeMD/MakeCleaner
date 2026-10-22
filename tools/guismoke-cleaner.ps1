@@ -1,12 +1,12 @@
-# GUI smoke for what only the WPF window has: tri-state group checkbox, Cancel during Analyze, Summary / Files views,
-# and /auto from MakeCleaner.Wpf.exe. TEMP/LOCALAPPDATA/APPDATA point at a fixture; every Windows rule is off except
+# GUI smoke for the Cleaner screen: tri-state group checkbox, Cancel during Analyze, Summary / Files views,
+# and /auto from MakeCleaner.exe. TEMP/LOCALAPPDATA/APPDATA point at a fixture; every Windows rule is off except
 # Temporary Files, so nothing real is ever scanned. The window never clicks Run Cleaner; only the final /auto cleans,
 # and it cleans the fixture TEMP. UI Automation, no keystrokes. Pure ASCII (PS 5.1).
 param([int]$Screen = 1, [string]$Config = 'Debug', [string]$BinDir = '', [string]$ShotDir = $env:TEMP, [int]$Files = 40000)
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
-$bin = if ($BinDir) { $BinDir } else { Join-Path $root "src\MakeCleaner.Wpf\bin\$Config\net10.0-windows" }
-$exe = Join-Path $bin 'MakeCleaner.Wpf.exe'
+$bin = if ($BinDir) { $BinDir } else { Join-Path $root "src\MakeCleaner\bin\$Config\net10.0-windows" }
+$exe = Join-Path $bin 'MakeCleaner.exe'
 . (Join-Path $PSScriptRoot 'screenpin.ps1')
 Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes, System.Drawing
 $AT = [System.Windows.Automation.AutomationElement]
@@ -14,7 +14,7 @@ $TS = [System.Windows.Automation.TreeScope]
 $CT = [System.Windows.Automation.ControlType]
 
 # Fixture: a TEMP big enough that Analyze is still running when Cancel is pressed, and empty AppData (no browsers).
-$fx = Join-Path ([IO.Path]::GetTempPath()) ('mc-wpf-smoke-' + [guid]::NewGuid().ToString('N'))
+$fx = Join-Path ([IO.Path]::GetTempPath()) ('mc-cleaner-smoke-' + [guid]::NewGuid().ToString('N'))
 $temp = Join-Path $fx 'Temp'; $noApps = Join-Path $fx 'noapps'
 New-Item -ItemType Directory -Force $noApps | Out-Null
 # many folders, few files each: walking folders is what makes Analyze slow enough to be cancelled
@@ -35,7 +35,7 @@ function Shot($w, $name) {
     $r = $w.Current.BoundingRectangle
     $bmp = New-Object System.Drawing.Bitmap ([int]$r.Width), ([int]$r.Height)
     [System.Drawing.Graphics]::FromImage($bmp).CopyFromScreen([int]$r.X, [int]$r.Y, 0, 0, $bmp.Size)
-    $p = Join-Path $ShotDir "makecleaner-wpf-$name.png"; $bmp.Save($p); Write-Host "screenshot: $p"
+    $p = Join-Path $ShotDir "makecleaner-cleaner-$name.png"; $bmp.Save($p); Write-Host "screenshot: $p"
 }
 function GroupState($w, $group) {
     $g = (ById $w 'windows').FindFirst($TS::Children, (New-Object System.Windows.Automation.AndCondition((Cond $AT::ControlTypeProperty $CT::TreeItem), (Cond $AT::NameProperty $group))))

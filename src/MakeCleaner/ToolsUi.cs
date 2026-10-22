@@ -1,41 +1,79 @@
+using System.IO;
 using System.Diagnostics;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Threading;
+using Microsoft.Win32;
 
 namespace MakeCleaner;
 
-// Shared helpers for the Tools panels.
+// Shared helpers for the Tools pages.
 public static class ToolsUi
 {
     // Scan button doubles as Cancel; work runs off the UI thread, progress = files seen.
-    public static async Task Run<T>(Button btn, Label status, string idle, Func<CancellationToken, IProgress<int>, T> work, Action<T> done)
+    // The count is sampled 5x a second: a Progress<T> per report posts hundreds of UI updates a second on a warm disk.
+    public static async Task Run<T>(Button btn, TextBlock status, Func<CancellationToken, IProgress<int>, T> work, Action<T> done)
     {
         if (btn.Tag is CancellationTokenSource running) { running.Cancel(); return; }
         using var cts = new CancellationTokenSource();
+        var idle = btn.Content;
         btn.Tag = cts;
-        btn.Text = "Cancel";
-        var progress = new Progress<int>(n => status.Text = $"Scanning... {n:N0} files");
+        btn.Content = "Cancel";
+        var seen = new Latest();
+        var timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(200) };
+        timer.Tick += (_, _) => status.Text = $"Scanning... {seen.Value:N0} files";
         status.Text = "Scanning...";
-        try { done(await Task.Run(() => work(cts.Token, progress))); }
-        catch (OperationCanceledException) { status.Text = "Cancelled"; }
-        finally { btn.Tag = null; btn.Text = idle; }
-    }
-
-    public static (TextBox, Panel) PathRow(string label, string name, string text)
-    {
-        var box = new TextBox { Dock = DockStyle.Fill, Name = name, Text = text };
-        var browse = new Button { Text = "...", Dock = DockStyle.Right, Width = 32 };
-        browse.Click += (_, _) =>
+        timer.Start();
+        try
         {
-            using var d = new FolderBrowserDialog();
-            if (d.ShowDialog() == DialogResult.OK) box.Text = box.Text.Length == 0 ? d.SelectedPath : $"{box.Text}; {d.SelectedPath}";
-        };
-        var row = new Panel { Dock = DockStyle.Top, Height = 28, Padding = new Padding(4, 3, 4, 2) };
-        row.Controls.AddRange([box, browse, new Label { Text = label, Dock = DockStyle.Left, Width = 70, TextAlign = ContentAlignment.MiddleLeft }]);
-        return (box, row);
+            var result = await Task.Run(() => work(cts.Token, seen));
+            timer.Stop();
+            done(result);
+        }
+        catch (OperationCanceledException) { timer.Stop(); status.Text = "Cancelled"; }
+        finally { timer.Stop(); btn.Tag = null; btn.Content = idle; }
     }
 
-    public static bool ConfirmDelete(IWin32Window owner, int count) =>
-        MessageBox.Show(owner, $"Delete {count} file(s)? This cannot be undone.", "MakeCleaner",
-            MessageBoxButtons.YesNo, MessageBoxIcon.Warning, MessageBoxDefaultButton.Button2) == DialogResult.Yes;
+    sealed class Latest : IProgress<int>
+    {
+        int value;
+        public int Value => Volatile.Read(ref value);
+        public void Report(int v) => Volatile.Write(ref value, v);
+    }
+
+    public static bool Confirm(DependencyObject owner, string text, string title) =>
+        MessageBox.Show(Window.GetWindow(owner), text, title, MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No) == MessageBoxResult.Yes;
+
+    public static bool ConfirmDelete(DependencyObject owner, int count) =>
+        Confirm(owner, $"Delete {count} file(s)? This cannot be undone.", "MakeCleaner");
+
+    public static void Info(DependencyObject owner, string text, string title) =>
+        MessageBox.Show(Window.GetWindow(owner), text, title);
 
     public static void OpenFolder(string file) => Process.Start("explorer.exe", $"/select,\"{file}\"");
+
+    // Appends the picked folder to a "; "-separated path box.
+    public static void PickFolder(TextBox box)
+    {
+        var d = new OpenFolderDialog();
+        if (d.ShowDialog(Window.GetWindow(box)) == true) box.Text = box.Text.Length == 0 ? d.FolderName : $"{box.Text}; {d.FolderName}";
+    }
+
+    // "Save to text file": header + one tab-separated line per row (or one pre-built block).
+    public static void SaveText(DependencyObject owner, string name, IEnumerable<string> lines)
+    {
+        var dlg = new SaveFileDialog { FileName = $"MakeCleaner {name}.txt", Filter = "Text files (*.txt)|*.txt" };
+        if (dlg.ShowDialog(Window.GetWindow(owner)) == true) File.WriteAllLines(dlg.FileName, lines);
+    }
+
+    // Ask, relaunch elevated, close this copy. Returns false when not elevated and nothing happened.
+    public static bool RequireAdmin(DependencyObject owner, string what)
+    {
+        if (Elevated.IsAdmin) return true;
+        if (MessageBox.Show(Window.GetWindow(owner), $"{what} requires administrator rights. Restart MakeCleaner as administrator?",
+                "MakeCleaner", MessageBoxButton.OKCancel, MessageBoxImage.Information) == MessageBoxResult.OK
+            && Elevated.RelaunchAsAdmin())
+            Application.Current.Shutdown();
+        return false;
+    }
 }

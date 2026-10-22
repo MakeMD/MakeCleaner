@@ -1,3 +1,5 @@
+using System.Windows;
+
 namespace MakeCleaner;
 
 static class Program
@@ -9,8 +11,8 @@ static class Program
         Cookies.Keep = () => settings.GetList(Cookies.KeepPrefix); // before /auto: it must honour the keep-list too
         bool Has(string flag) => args.Any(a => a.Equals(flag, StringComparison.OrdinalIgnoreCase));
         if (Has("/auto")) return Schedule.Auto(settings, Has("/shutdown")); // no window at all
-        ApplicationConfiguration.Initialize();
-        Application.Run(new MainForm(settings));
-        return 0;
+        var app = new Application();
+        app.Resources.MergedDictionaries.Add((ResourceDictionary)Application.LoadComponent(new Uri("/MakeCleaner;component/Theme.xaml", UriKind.Relative)));
+        return app.Run(new MainWindow(settings));
     }
 }

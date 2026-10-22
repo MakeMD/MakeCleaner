@@ -11,7 +11,8 @@ It ships the following third-party components:
    Shipped unmodified (Non-CCleaner flavor). The license covers only this data file,
    not the MakeCleaner program. See rules\README.md.
 
-2. .NET runtime and Windows Forms (bundled into MakeCleaner.exe)
+2. .NET runtime and WPF (bundled into MakeCleaner.exe; WPF's native *_cor3.dll and D3DCompiler_47_cor3.dll
+   ship next to it as part of the same runtime)
    Copyright (c) .NET Foundation and Contributors
    License: MIT - https://github.com/dotnet/runtime/blob/main/LICENSE.TXT
 

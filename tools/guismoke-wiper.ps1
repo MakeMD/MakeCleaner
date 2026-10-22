@@ -1,13 +1,11 @@
 # GUI smoke for Tools (Drive Wiper, System Restore) and Options: opens each page via UI Automation,
 # ticks the first drive to show warnings, takes screenshots. NEVER clicks Wipe / Remove / Erase.
 # Pure ASCII (PS 5.1).
-param([int]$Screen = 1, [string]$Config = 'Debug', [string]$BinDir = '', [switch]$Wpf, [string]$ShotDir = $env:TEMP)
+param([int]$Screen = 1, [string]$Config = 'Debug', [string]$BinDir = '', [string]$ShotDir = $env:TEMP)
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
-$app = if ($Wpf) { 'MakeCleaner.Wpf' } else { 'MakeCleaner' } # -Wpf: the WPF window; WinForms stays the default until ticket 19
-$bin = if ($BinDir) { $BinDir } else { Join-Path $root "src\$app\bin\$Config\net10.0-windows" } # -BinDir: a published copy (tools\releasecheck.ps1)
-$exe = Join-Path $bin "$app.exe"
-$tag = if ($Wpf) { 'wpf-' } else { '' } # WPF screenshots sit next to the WinForms ones
+$bin = if ($BinDir) { $BinDir } else { Join-Path $root "src\MakeCleaner\bin\$Config\net10.0-windows" } # -BinDir: a published copy (tools\releasecheck.ps1)
+$exe = Join-Path $bin 'MakeCleaner.exe'
 . (Join-Path $PSScriptRoot 'screenpin.ps1')
 Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes, System.Drawing
 $AT = [System.Windows.Automation.AutomationElement]
@@ -17,7 +15,7 @@ Set-Content (Join-Path $bin 'portable.dat') '#PORTABLE#'
 function ById($w, $id) { $w.FindFirst($Desc, (New-Object System.Windows.Automation.PropertyCondition($AT::AutomationIdProperty, $id))) }
 function Tab($w, $name) {
     $c = New-Object System.Windows.Automation.AndCondition(
-        (New-Object System.Windows.Automation.OrCondition((New-Object System.Windows.Automation.PropertyCondition($AT::ControlTypeProperty, [System.Windows.Automation.ControlType]::TabItem)), (New-Object System.Windows.Automation.PropertyCondition($AT::ControlTypeProperty, [System.Windows.Automation.ControlType]::ListItem)))),
+        (New-Object System.Windows.Automation.PropertyCondition($AT::ControlTypeProperty, [System.Windows.Automation.ControlType]::ListItem)), # rail tile / sub-menu row
         (New-Object System.Windows.Automation.PropertyCondition($AT::NameProperty, $name)))
     $w.FindFirst($Desc, $c).GetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern).Select()
     Start-Sleep -Milliseconds 700
@@ -26,7 +24,7 @@ function Shot($w, $name) {
     $r = $w.Current.BoundingRectangle
     $bmp = New-Object System.Drawing.Bitmap ([int]$r.Width), ([int]$r.Height)
     [System.Drawing.Graphics]::FromImage($bmp).CopyFromScreen([int]$r.X, [int]$r.Y, 0, 0, $bmp.Size)
-    $f = Join-Path $ShotDir "makecleaner-$tag$name.png"; $bmp.Save($f); Write-Host "screenshot: $f"
+    $f = Join-Path $ShotDir "makecleaner-$name.png"; $bmp.Save($f); Write-Host "screenshot: $f"
 }
 function Items($el) { @($el.FindAll($Desc, (New-Object System.Windows.Automation.PropertyCondition($AT::ControlTypeProperty, [System.Windows.Automation.ControlType]::CheckBox)))) }
 
@@ -63,12 +61,17 @@ try {
     if (-not $rp.Current.Name) { $fail += 'restore status empty' }
     Shot $w 'restore'
 
-    if (-not $Wpf) { # Options moves to WPF in ticket 18
-        Tab $w 'Options'
-        $sd = ById $w 'secureDelete'
-        Write-Host ("secure delete combo: " + $sd.Current.Name + " / value: " + $sd.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern).Current.Value)
-        Shot $w 'options'
+    Tab $w 'Options'
+    Tab $w 'Settings'
+    $sd = ById $w 'secureDelete'
+    if (-not $sd) { $fail += 'secure delete combo missing' }
+    else {
+        # a non-editable WPF ComboBox exposes its choice through SelectionPattern, not ValuePattern
+        $sel = @($sd.GetCurrentPattern([System.Windows.Automation.SelectionPattern]::Pattern).Current.GetSelection() | ForEach-Object { $_.Current.Name })
+        Write-Host ("secure delete combo: " + ($sel -join ', '))
+        if ($sel.Count -ne 1) { $fail += 'secure delete combo has no selection' }
     }
+    Shot $w 'options'
 
     $w.GetCurrentPattern([System.Windows.Automation.WindowPattern]::Pattern).Close()
     $p.WaitForExit(5000) | Out-Null

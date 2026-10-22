@@ -10,14 +10,16 @@ $publish = Join-Path $dist 'publish'
 $version = (dotnet msbuild $proj -getProperty:Version).Trim()
 if ($LASTEXITCODE -or -not $version) { throw "could not read <Version> from the csproj" }
 
-# 1. Self-contained single-file exe. The bundle is compressed and unpacked in memory; e_sqlite3.dll stays next to
-#    the exe instead of self-extracting, so a portable copy never writes to %TEMP% (no IncludeNativeLibrariesForSelfExtract).
+# 1. Self-contained single-file exe. The bundle is compressed and unpacked in memory; the native dlls (e_sqlite3 and
+#    WPF's *_cor3.dll) stay next to the exe instead of self-extracting, so a portable copy never writes to %TEMP%
+#    (no IncludeNativeLibrariesForSelfExtract).
 Write-Host "[1/3] dotnet publish $version" -ForegroundColor Cyan
 if (Test-Path $dist) { Remove-Item $dist -Recurse -Force }
 dotnet publish $proj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true `
     -p:EnableCompressionInSingleFile=true -p:DebugType=None -o $publish
 if ($LASTEXITCODE) { throw "dotnet publish failed (exit $LASTEXITCODE)" }
-foreach ($f in 'MakeCleaner.exe', 'e_sqlite3.dll', 'rules\Winapp2.ini', 'rules\README.md', 'THIRD-PARTY-NOTICES.txt') {
+foreach ($f in 'MakeCleaner.exe', 'e_sqlite3.dll', 'wpfgfx_cor3.dll', 'PresentationNative_cor3.dll',
+               'rules\Winapp2.ini', 'rules\README.md', 'THIRD-PARTY-NOTICES.txt') {
     if (-not (Test-Path (Join-Path $publish $f))) { throw "publish output is missing $f" }
 }
 

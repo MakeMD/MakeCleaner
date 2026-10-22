@@ -1,12 +1,11 @@
 # GUI smoke for the Browsers tab: TEMP/LOCALAPPDATA/APPDATA point at a fixture with a fake Chrome and Firefox,
 # so the real browsers are never seen. Opens Cleaner > Browsers, clicks Analyze ONLY (never Run Cleaner),
 # checks the fixture is untouched and Winapp2 Chrome sections are hidden. UI Automation, no keystrokes. Pure ASCII (PS 5.1).
-param([int]$Screen = 1, [string]$Config = 'Debug', [string]$BinDir = '', [switch]$Wpf, [string]$Shot = "$env:TEMP\makecleaner-browsers-smoke.png")
+param([int]$Screen = 1, [string]$Config = 'Debug', [string]$BinDir = '', [string]$Shot = "$env:TEMP\makecleaner-browsers-smoke.png")
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
-$app = if ($Wpf) { 'MakeCleaner.Wpf' } else { 'MakeCleaner' } # -Wpf: the WPF window; WinForms stays the default until ticket 19
-$bin = if ($BinDir) { $BinDir } else { Join-Path $root "src\$app\bin\$Config\net10.0-windows" } # -BinDir: a published copy (tools\releasecheck.ps1)
-$exe = Join-Path $bin "$app.exe"
+$bin = if ($BinDir) { $BinDir } else { Join-Path $root "src\MakeCleaner\bin\$Config\net10.0-windows" } # -BinDir: a published copy (tools\releasecheck.ps1)
+$exe = Join-Path $bin 'MakeCleaner.exe'
 . (Join-Path $PSScriptRoot 'screenpin.ps1')
 Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes, System.Drawing
 $AT = [System.Windows.Automation.AutomationElement]

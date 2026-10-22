@@ -1,12 +1,11 @@
 # GUI smoke for Options > Include / Exclude and saved checkbox states (ticket 04). Portable mode, fixture folder in TEMP.
 # Adds an Include via the UI -> Analyze sees the fixture files; adds an Exclude -> Analyze hides them; restarts the exe
 # and checks the lists and checkbox states came back. Analyze ONLY, never clicks Run Cleaner. Pure ASCII (PS 5.1).
-param([int]$Screen = 1, [string]$Config = 'Debug', [string]$BinDir = '', [switch]$Wpf, [string]$ShotDir = $env:TEMP)
+param([int]$Screen = 1, [string]$Config = 'Debug', [string]$BinDir = '', [string]$ShotDir = $env:TEMP)
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
-$app = if ($Wpf) { 'MakeCleaner.Wpf' } else { 'MakeCleaner' } # -Wpf: the WPF window; WinForms stays the default until ticket 19
-$bin = if ($BinDir) { $BinDir } else { Join-Path $root "src\$app\bin\$Config\net10.0-windows" } # -BinDir: a published copy (tools\releasecheck.ps1)
-$exe = Join-Path $bin "$app.exe"
+$bin = if ($BinDir) { $BinDir } else { Join-Path $root "src\MakeCleaner\bin\$Config\net10.0-windows" } # -BinDir: a published copy (tools\releasecheck.ps1)
+$exe = Join-Path $bin 'MakeCleaner.exe'
 $ini = Join-Path $bin 'MakeCleaner.ini'
 . (Join-Path $PSScriptRoot 'screenpin.ps1')
 Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes, System.Drawing
@@ -30,9 +29,7 @@ function SetText($w, $id, $v) { (ById $w $id).GetCurrentPattern([System.Windows.
 function Tab($w, $name) {
     $c = New-Object System.Windows.Automation.AndCondition(
         (New-Object System.Windows.Automation.PropertyCondition($AT::NameProperty, $name)),
-        (New-Object System.Windows.Automation.OrCondition(
-            (New-Object System.Windows.Automation.PropertyCondition($AT::ControlTypeProperty, [System.Windows.Automation.ControlType]::TabItem)),
-            (New-Object System.Windows.Automation.PropertyCondition($AT::ControlTypeProperty, [System.Windows.Automation.ControlType]::ListItem)))))
+        (New-Object System.Windows.Automation.PropertyCondition($AT::ControlTypeProperty, [System.Windows.Automation.ControlType]::ListItem)))
     $w.FindFirst($TS::Descendants, $c).GetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern).Select()
 }
 function Status($w) { (ById $w 'status').Current.Name }
@@ -63,14 +60,13 @@ function Open() {
     WaitStatus $w '*applications detected' | Out-Null # app detection must not overwrite the analyze status later
     return $p, $w
 }
-function Page($w, $name) { if ($Wpf) { Tab $w $name } } # WPF Options has a sub-menu; WinForms shows one long panel
 function Analyze($w) { Tab $w 'Cleaner'; Click $w 'analyze'; WaitStatus $w 'Analysis complete*' }
 
 Start-ScreenPin -Screen $Screen -Exe $exe
 $p = $null
 try {
     $p, $w = Open
-    Tab $w 'Options'; Page $w 'Include'
+    Tab $w 'Options'; Tab $w 'Include'
     SetText $w 'incPath' 'C:\'
     Click $w 'incAdd'
     $rej = (ById $w 'incStatus').Current.Name
@@ -83,7 +79,7 @@ try {
     $a1 = Analyze $w
     Write-Host "with include: $a1"
 
-    Tab $w 'Options'; Page $w 'Exclude'
+    Tab $w 'Options'; Tab $w 'Exclude'
     SetText $w 'excPath' (Join-Path $fx 'private')
     Click $w 'excAdd'
     $a2 = Analyze $w
@@ -93,9 +89,9 @@ try {
     $p.WaitForExit(5000) | Out-Null
 
     $p, $w = Open
-    Tab $w 'Options'; Page $w 'Include'
+    Tab $w 'Options'; Tab $w 'Include'
     $inc2 = ListItems $w 'incList'
-    Page $w 'Exclude'
+    Tab $w 'Exclude'
     $exc2 = ListItems $w 'excList'
     $a3 = Analyze $w
     Write-Host "after restart: include=$inc2 exclude=$exc2 analyze=$a3"

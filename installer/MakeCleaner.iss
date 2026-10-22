@@ -43,7 +43,7 @@ Name: "{autodesktop}\MakeCleaner"; Filename: "{app}\MakeCleaner.exe"; Tasks: des
 Filename: "{app}\MakeCleaner.exe"; Description: "{cm:LaunchProgram,MakeCleaner}"; Flags: postinstall nowait skipifsilent
 
 ; The task exists only if the user created it in Options > Scheduled cleaning; schtasks just fails quietly otherwise.
-; Name must match Schedule.TaskName in src\MakeCleaner\Schedule.cs.
+; Name must match Schedule.TaskName in src\MakeCleaner.Core\Schedule.cs.
 [UninstallRun]
 Filename: "{sys}\schtasks.exe"; Parameters: "/Delete /TN ""MakeCleaner Auto Clean"" /F"; Flags: runhidden waituntilterminated; RunOnceId: "deltask"
 

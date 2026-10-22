@@ -116,10 +116,8 @@ public class EngineTests : IDisposable
         Assert.True(File.Exists(Path.Combine(dir, Settings.FileName)));
     }
 
-    // The apps' build folders (the test project builds them but does not reference them).
-    internal static readonly string AppDir = Meta("AppDir");
-    static readonly string WpfAppDir = Meta("WpfAppDir");
-    static string Meta(string key) => typeof(EngineTests).Assembly.GetCustomAttributes<AssemblyMetadataAttribute>().Single(a => a.Key == key).Value!;
+    // The app's build folder (the test project builds it but does not reference it).
+    internal static readonly string AppDir = typeof(EngineTests).Assembly.GetCustomAttributes<AssemblyMetadataAttribute>().Single(a => a.Key == "AppDir").Value!;
 
     // Assembly references read from metadata only, so nothing gets loaded into the test process.
     static string[] References(string dll)
@@ -129,16 +127,13 @@ public class EngineTests : IDisposable
         return [.. md.AssemblyReferences.Select(h => md.GetString(md.GetAssemblyReference(h).Name))];
     }
 
-    [Theory]
-    [InlineData("AppDir", "MakeCleaner.dll")]
-    [InlineData("WpfAppDir", "MakeCleaner.Wpf.dll")]
-    public void No_shipped_assembly_references_networking(string dirKey, string appDll)
+    [Fact]
+    public void No_shipped_assembly_references_networking()
     {
         // Walk the app's own dll and every app-local dependency it pulls in (MakeCleaner.Core, Microsoft.Data.Sqlite,
         // SQLitePCLRaw ...): exactly the managed set that ships next to / inside the published exe. Framework assemblies
-        // (WinForms, WPF's PresentationFramework etc.) live elsewhere and are not walked.
-        var appDir = dirKey == "AppDir" ? AppDir : WpfAppDir;
-        var queue = new Queue<string>([Path.Combine(appDir, appDll)]);
+        // (WPF's PresentationFramework etc.) live elsewhere and are not walked.
+        var queue = new Queue<string>([Path.Combine(AppDir, "MakeCleaner.dll")]);
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         while (queue.TryDequeue(out var path))
         {
@@ -146,7 +141,7 @@ public class EngineTests : IDisposable
             foreach (var r in References(path))
             {
                 Assert.False(r.StartsWith("System.Net", StringComparison.OrdinalIgnoreCase), $"{Path.GetFileName(path)} references {r}");
-                var local = Path.Combine(appDir, r + ".dll");
+                var local = Path.Combine(AppDir, r + ".dll");
                 if (File.Exists(local)) queue.Enqueue(local);
             }
         }

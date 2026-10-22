@@ -1,12 +1,11 @@
 # GUI smoke: runs the built exe in portable mode with TEMP pointed at a fixture folder,
 # clicks Analyze then Run Cleaner via UI Automation (no keystrokes), checks the status line,
 # saves a screenshot. Never touches the real %TEMP%. Pure ASCII (PS 5.1).
-param([int]$Screen = 1, [string]$Config = 'Debug', [string]$BinDir = '', [switch]$Wpf, [string]$Shot = "$env:TEMP\makecleaner-smoke.png")
+param([int]$Screen = 1, [string]$Config = 'Debug', [string]$BinDir = '', [string]$Shot = "$env:TEMP\makecleaner-smoke.png")
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
-$app = if ($Wpf) { 'MakeCleaner.Wpf' } else { 'MakeCleaner' } # -Wpf: the WPF window; WinForms stays the default until ticket 19
-$bin = if ($BinDir) { $BinDir } else { Join-Path $root "src\$app\bin\$Config\net10.0-windows" } # -BinDir: a published copy (tools\releasecheck.ps1)
-$exe = Join-Path $bin "$app.exe"
+$bin = if ($BinDir) { $BinDir } else { Join-Path $root "src\MakeCleaner\bin\$Config\net10.0-windows" } # -BinDir: a published copy (tools\releasecheck.ps1)
+$exe = Join-Path $bin 'MakeCleaner.exe'
 . (Join-Path $PSScriptRoot 'screenpin.ps1')
 Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes, System.Drawing
 $AT = [System.Windows.Automation.AutomationElement]
