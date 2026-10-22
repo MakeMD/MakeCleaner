@@ -6,6 +6,8 @@ public class ToolsPanel : UserControl
     public ToolsPanel()
     {
         var tabs = new TabControl { Dock = DockStyle.Fill, Name = "toolTabs" };
+        tabs.TabPages.Add(Page("Uninstall", new UninstallPanel()));
+        tabs.TabPages.Add(Page("Startup", new StartupPanel()));
         Controls.Add(tabs);
     }
 
