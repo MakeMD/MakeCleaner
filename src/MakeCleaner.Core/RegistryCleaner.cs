@@ -373,6 +373,12 @@ public static class RegFix
     public static Result Fix(IReadOnlyList<RegIssue> issues, string backupPath)
     {
         WriteBackup(issues, backupPath); // throws before any change if the backup can't be written
+        return Apply(issues);
+    }
+
+    // Removes the issues. Only for callers that already wrote the backup of all of them (the fix-by-fix dialog).
+    public static Result Apply(IReadOnlyList<RegIssue> issues)
+    {
         int ok = 0, failed = 0;
         foreach (var i in issues)
         {

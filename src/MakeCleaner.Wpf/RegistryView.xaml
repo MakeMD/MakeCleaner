@@ -1,0 +1,80 @@
+<UserControl x:Class="MakeCleaner.RegistryView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="300" />
+            <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
+
+        <!-- what to look for: one box per category, "all" on top -->
+        <Border Background="{StaticResource Surface}" BorderBrush="{StaticResource Line}" BorderThickness="1">
+            <DockPanel>
+                <CheckBox x:Name="all" DockPanel.Dock="Top" Content="All categories" FontWeight="SemiBold" Margin="12,10,12,6" IsChecked="{Binding IsChecked}"
+                          AutomationProperties.AutomationId="regall" />
+                <ItemsControl x:Name="cats" Margin="12,0,12,8" AutomationProperties.AutomationId="regcats">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <CheckBox Content="{Binding Label}" IsChecked="{Binding IsChecked}" Margin="0,3"
+                                      AutomationProperties.Name="{Binding Label}" />
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </DockPanel>
+        </Border>
+
+        <DockPanel Grid.Column="1" Margin="16,0,0,0">
+            <!-- progress strip: same shape as Cleaner's -->
+            <Border DockPanel.Dock="Top" Background="{StaticResource Surface}" BorderBrush="{StaticResource Line}" BorderThickness="1" CornerRadius="4" Padding="14,10">
+                <StackPanel>
+                    <DockPanel>
+                        <Button x:Name="cancel" DockPanel.Dock="Right" Content="Cancel" MinWidth="80" MinHeight="26" Padding="10,2"
+                                IsEnabled="False" AutomationProperties.AutomationId="regcancel" />
+                        <TextBlock x:Name="status" AutomationProperties.AutomationId="regstatus" FontWeight="SemiBold" TextWrapping="Wrap" VerticalAlignment="Center"
+                                   Text="Pick the categories on the left, then press Scan for Issues. Scanning changes nothing." />
+                    </DockPanel>
+                    <DockPanel Margin="0,8,0,0">
+                        <TextBlock x:Name="progressText" DockPanel.Dock="Right" Margin="10,0,0,0" Foreground="{StaticResource Muted}"
+                                   FontSize="12" MinWidth="110" TextAlignment="Right" />
+                        <ProgressBar x:Name="progress" VerticalAlignment="Center" />
+                    </DockPanel>
+                </StackPanel>
+            </Border>
+
+            <!-- Scan left, Review right -->
+            <DockPanel DockPanel.Dock="Bottom" Margin="0,12,0,0">
+                <Button x:Name="scan" Content="Scan for Issues" AutomationProperties.AutomationId="regscan" />
+                <Button x:Name="review" Content="Review selected Issues..." Style="{StaticResource Primary}" HorizontalAlignment="Right"
+                        IsEnabled="False" AutomationProperties.AutomationId="regfix" />
+            </DockPanel>
+
+            <ListView x:Name="list" Margin="0,12,0,0" BorderBrush="{StaticResource Line}" Foreground="{StaticResource Text}" AutomationProperties.AutomationId="reglist">
+                <ListView.View>
+                    <GridView>
+                        <GridViewColumn Width="34">
+                            <GridViewColumn.CellTemplate>
+                                <DataTemplate>
+                                    <CheckBox IsChecked="{Binding IsChecked}" AutomationProperties.Name="{Binding Issue.Target}" />
+                                </DataTemplate>
+                            </GridViewColumn.CellTemplate>
+                        </GridViewColumn>
+                        <GridViewColumn Header="Problem" Width="170" DisplayMemberBinding="{Binding Issue.Problem}" />
+                        <GridViewColumn Header="Data" Width="260" DisplayMemberBinding="{Binding Issue.Data}" />
+                        <GridViewColumn Header="Registry key" Width="300" DisplayMemberBinding="{Binding Issue.Target}" />
+                    </GridView>
+                </ListView.View>
+                <ListView.ContextMenu>
+                    <ContextMenu>
+                        <MenuItem x:Name="selectAll" Header="Select all" />
+                        <MenuItem x:Name="selectNone" Header="Select none" />
+                        <MenuItem x:Name="selectType" Header="Select all of this type" />
+                        <MenuItem x:Name="selectTypeNone" Header="Deselect all of this type" />
+                        <Separator />
+                        <MenuItem x:Name="openRegedit" Header="Open in RegEdit" />
+                        <MenuItem x:Name="exclude" Header="Add to Exclude list" />
+                    </ContextMenu>
+                </ListView.ContextMenu>
+            </ListView>
+        </DockPanel>
+    </Grid>
+</UserControl>

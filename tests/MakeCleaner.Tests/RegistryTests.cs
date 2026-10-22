@@ -183,6 +183,25 @@ public class RegistryTests : IDisposable
     // Key order after re-import can differ; compare as sets of lines.
     static string[] Sorted(string reg) => [.. reg.Split("\r\n").Where(l => l.Length > 0).Order(StringComparer.Ordinal)];
 
+    // The WPF fix dialog: one backup of every ticked issue, then fixes one at a time.
+    [Fact]
+    public void Backup_once_then_apply_one_by_one()
+    {
+        SeedAll();
+        var issues = Scanner.Scan(RegScanner.Categories, []);
+        Assert.True(issues.Count > 1);
+        var backup = Path.Combine(dir, "once.reg");
+        RegFix.WriteBackup(issues, backup);
+        var saved = File.ReadAllText(backup);
+
+        Assert.Equal(new RegFix.Result(1, 0), RegFix.Apply([issues[0]]));
+        Assert.Equal(new RegFix.Result(1, 0), RegFix.Apply([issues[0]])); // already gone: still counts as fixed, no error
+        Assert.Equal(issues.Count - 1, Scanner.Scan(RegScanner.Categories, []).Count);
+        Assert.Equal(saved, File.ReadAllText(backup)); // Apply never touches the backup
+        Assert.Equal(new RegFix.Result(issues.Count - 1, 0), RegFix.Apply(issues[1..]));
+        Assert.Empty(Scanner.Scan(RegScanner.Categories, []));
+    }
+
     [Fact]
     public void Backup_failure_changes_nothing()
     {
