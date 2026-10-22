@@ -5,7 +5,8 @@ using Microsoft.Win32;
 namespace MakeCleaner;
 
 // "path|pattern[;pattern]|RECURSE|REMOVESELF". REMOVESELF implies recursion and also drops the (emptied) folder.
-public record FileKey(string Path, string[] Patterns, bool Recurse, bool RemoveSelf = false)
+// OLDER=hours (MakeCleaner extension, used by Options > Include) skips files modified more recently.
+public record FileKey(string Path, string[] Patterns, bool Recurse, bool RemoveSelf = false, int OlderThanHours = 0)
 {
     public static FileKey Parse(string value)
     {
@@ -13,7 +14,9 @@ public record FileKey(string Path, string[] Patterns, bool Recurse, bool RemoveS
         var patterns = parts.Length > 1 && parts[1].Length > 0 ? parts[1].Split(';') : ["*.*"];
         bool Flag(string f) => parts.Skip(2).Any(p => p.Trim().Equals(f, StringComparison.OrdinalIgnoreCase));
         var removeSelf = Flag("REMOVESELF");
-        return new FileKey(parts[0].Trim(), patterns, removeSelf || Flag("RECURSE"), removeSelf);
+        var older = parts.Skip(2).Select(p => p.Trim()).FirstOrDefault(p => p.StartsWith("OLDER=", StringComparison.OrdinalIgnoreCase));
+        return new FileKey(parts[0].Trim(), patterns, removeSelf || Flag("RECURSE"), removeSelf,
+            older != null && int.TryParse(older[6..], out var h) && h > 0 ? h : 0);
     }
 }
 
