@@ -1,0 +1,15 @@
+<UserControl x:Class="MakeCleaner.StartupView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <DockPanel>
+        <StackPanel DockPanel.Dock="Right" Style="{StaticResource ToolColumn}">
+            <Button x:Name="enable" Content="Enable" AutomationProperties.AutomationId="startupEnable" />
+            <Button x:Name="disable" Content="Disable" AutomationProperties.AutomationId="startupDisable" />
+            <Button x:Name="delete" Content="Delete" AutomationProperties.AutomationId="startupDelete" />
+            <Button x:Name="refresh" Content="Refresh" Margin="0,16,0,8" AutomationProperties.AutomationId="startupRefresh" />
+            <Button x:Name="save" Content="Save to text file" AutomationProperties.AutomationId="startupSave" />
+        </StackPanel>
+        <!-- one tab per kind; the lists are built in code (same columns everywhere) -->
+        <TabControl x:Name="tabs" AutomationProperties.AutomationId="startupTabs" />
+    </DockPanel>
+</UserControl>
