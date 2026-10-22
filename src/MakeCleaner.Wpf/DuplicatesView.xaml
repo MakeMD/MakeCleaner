@@ -1,0 +1,114 @@
+<UserControl x:Class="MakeCleaner.DuplicatesView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <DockPanel>
+        <TextBlock x:Name="status" DockPanel.Dock="Bottom" Margin="0,10,0,0" TextWrapping="Wrap" AutomationProperties.AutomationId="dupStatus" />
+
+        <Grid>
+            <!-- 1. setup: what counts as a duplicate, where to look -->
+            <DockPanel x:Name="setup">
+                <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">
+                    <Button x:Name="search" Content="Search" Style="{StaticResource Primary}" AutomationProperties.AutomationId="dupSearch" />
+                </StackPanel>
+                <Border Background="{StaticResource Surface}" BorderBrush="{StaticResource Line}" BorderThickness="1" CornerRadius="4" Padding="16,12">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="110" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
+                        <Grid.Resources>
+                            <Style TargetType="CheckBox">
+                                <Setter Property="Margin" Value="0,0,18,0" />
+                                <Setter Property="VerticalAlignment" Value="Center" />
+                            </Style>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="VerticalAlignment" Value="Center" />
+                            </Style>
+                        </Grid.Resources>
+
+                        <TextBlock Text="Match by" FontWeight="SemiBold" />
+                        <WrapPanel Grid.Column="1" Grid.ColumnSpan="2" Margin="0,6">
+                            <CheckBox x:Name="byName" Content="Name" IsChecked="True" />
+                            <CheckBox x:Name="bySize" Content="Size" IsChecked="True" />
+                            <CheckBox x:Name="byDate" Content="Modified date" IsChecked="True" />
+                            <CheckBox x:Name="byContent" Content="Content" />
+                        </WrapPanel>
+
+                        <TextBlock Grid.Row="1" Text="Ignore" FontWeight="SemiBold" />
+                        <WrapPanel Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2" Margin="0,6">
+                            <CheckBox x:Name="noEmpty" Content="Zero-byte files" IsChecked="True" />
+                            <CheckBox x:Name="noSystem" Content="System files" IsChecked="True" />
+                            <CheckBox x:Name="noHidden" Content="Hidden files" IsChecked="True" />
+                            <CheckBox x:Name="noReadOnly" Content="Read-only files" />
+                        </WrapPanel>
+
+                        <TextBlock Grid.Row="2" Text="Size (MB)" FontWeight="SemiBold" />
+                        <StackPanel Grid.Row="2" Grid.Column="1" Grid.ColumnSpan="2" Orientation="Horizontal" Margin="0,6">
+                            <TextBlock Text="from" Margin="0,0,6,0" />
+                            <TextBox x:Name="minMb" Width="70" Text="0" AutomationProperties.AutomationId="dupMinMb" />
+                            <TextBlock Text="to" Margin="10,0,6,0" />
+                            <TextBox x:Name="maxMb" Width="70" Text="0" AutomationProperties.AutomationId="dupMaxMb" />
+                            <TextBlock Text="0 = no limit" Margin="10,0,0,0" Foreground="{StaticResource Muted}" />
+                        </StackPanel>
+
+                        <TextBlock Grid.Row="3" Text="Search in" FontWeight="SemiBold" />
+                        <TextBox x:Name="include" Grid.Row="3" Grid.Column="1" Margin="0,6" VerticalContentAlignment="Center" AutomationProperties.AutomationId="dupInclude" />
+                        <Button x:Name="browseInclude" Grid.Row="3" Grid.Column="2" Content="Browse..." Margin="8,6,0,6" />
+
+                        <TextBlock Grid.Row="4" Text="Skip" FontWeight="SemiBold" />
+                        <TextBox x:Name="exclude" Grid.Row="4" Grid.Column="1" Margin="0,6" VerticalContentAlignment="Center" AutomationProperties.AutomationId="dupExclude" />
+                        <Button x:Name="browseExclude" Grid.Row="4" Grid.Column="2" Content="Browse..." Margin="8,6,0,6" />
+
+                        <TextBlock Grid.Row="5" Grid.ColumnSpan="3" Margin="0,10,0,0" Foreground="{StaticResource Muted}" TextWrapping="Wrap" VerticalAlignment="Top"
+                                   Text="Several folders: separate them with ';'. Content compares the bytes of files that already share a size." />
+                    </Grid>
+                </Border>
+            </DockPanel>
+
+            <!-- 2. results: one group per set of duplicates -->
+            <DockPanel x:Name="results" Visibility="Collapsed">
+                <StackPanel DockPanel.Dock="Right" Style="{StaticResource ButtonColumn}">
+                    <Button x:Name="selectDupes" Content="Select all but first" AutomationProperties.AutomationId="dupSelect" />
+                    <Button x:Name="delete" Content="Delete Selected" AutomationProperties.AutomationId="dupDelete" />
+                    <Button x:Name="back" Content="Back" AutomationProperties.AutomationId="dupBack" />
+                </StackPanel>
+                <ListView x:Name="list" BorderBrush="{StaticResource Line}" AutomationProperties.AutomationId="dupList"
+                          VirtualizingPanel.IsVirtualizingWhenGrouping="True">
+                    <ListView.GroupStyle>
+                        <GroupStyle>
+                            <GroupStyle.HeaderTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding Name}" FontWeight="SemiBold" Margin="4,8,0,2" Foreground="{StaticResource Muted}" />
+                                </DataTemplate>
+                            </GroupStyle.HeaderTemplate>
+                        </GroupStyle>
+                    </ListView.GroupStyle>
+                    <ListView.View>
+                        <GridView>
+                            <GridViewColumn Width="34">
+                                <GridViewColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <CheckBox IsChecked="{Binding IsChecked}" AutomationProperties.Name="{Binding Name}" />
+                                    </DataTemplate>
+                                </GridViewColumn.CellTemplate>
+                            </GridViewColumn>
+                            <GridViewColumn Header="Name" Width="160" DisplayMemberBinding="{Binding Name}" />
+                            <GridViewColumn Header="Size" Width="70" DisplayMemberBinding="{Binding Size}" />
+                            <GridViewColumn Header="Modified" Width="120" DisplayMemberBinding="{Binding Modified}" />
+                            <GridViewColumn Header="Folder" Width="420" DisplayMemberBinding="{Binding Folder}" />
+                        </GridView>
+                    </ListView.View>
+                </ListView>
+            </DockPanel>
+        </Grid>
+    </DockPanel>
+</UserControl>

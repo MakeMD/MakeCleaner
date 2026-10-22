@@ -1,11 +1,13 @@
 # GUI smoke for Tools: Duplicate Finder + Disk Analyzer on a small fixture folder, plus cancel of a
 # full-drive Disk Analyzer scan (read-only). Never deletes anything. UI Automation only, no keystrokes.
 # Pure ASCII (PS 5.1).
-param([int]$Screen = 1, [string]$Config = 'Debug', [string]$BinDir = '', [string]$ShotDir = $env:TEMP)
+param([int]$Screen = 1, [string]$Config = 'Debug', [string]$BinDir = '', [switch]$Wpf, [string]$ShotDir = $env:TEMP)
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
-$bin = if ($BinDir) { $BinDir } else { Join-Path $root "src\MakeCleaner\bin\$Config\net10.0-windows" } # -BinDir: a published copy (tools\releasecheck.ps1)
-$exe = Join-Path $bin 'MakeCleaner.exe'
+$app = if ($Wpf) { 'MakeCleaner.Wpf' } else { 'MakeCleaner' } # -Wpf: the WPF window; WinForms stays the default until ticket 19
+$bin = if ($BinDir) { $BinDir } else { Join-Path $root "src\$app\bin\$Config\net10.0-windows" } # -BinDir: a published copy (tools\releasecheck.ps1)
+$exe = Join-Path $bin "$app.exe"
+$tag = if ($Wpf) { 'wpf-' } else { '' } # WPF screenshots sit next to the WinForms ones
 . (Join-Path $PSScriptRoot 'screenpin.ps1')
 Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes, System.Drawing
 $AT = [System.Windows.Automation.AutomationElement]
@@ -27,7 +29,7 @@ function Id($w, $id) { Find $w $AT::AutomationIdProperty $id }
 function Tab($w, $name) {
     $c = New-Object System.Windows.Automation.AndCondition(
         (New-Object System.Windows.Automation.PropertyCondition($AT::NameProperty, $name)),
-        (New-Object System.Windows.Automation.PropertyCondition($AT::ControlTypeProperty, [System.Windows.Automation.ControlType]::TabItem)))
+        (New-Object System.Windows.Automation.OrCondition((New-Object System.Windows.Automation.PropertyCondition($AT::ControlTypeProperty, [System.Windows.Automation.ControlType]::TabItem)), (New-Object System.Windows.Automation.PropertyCondition($AT::ControlTypeProperty, [System.Windows.Automation.ControlType]::ListItem)))))
     $w.FindFirst($Desc, $c).GetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern).Select()
 }
 function Click($w, $id) { (Id $w $id).GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke() }
@@ -44,7 +46,7 @@ Start-ScreenPin -Screen $Screen -Exe $exe
 $p = Start-Process $exe -PassThru
 try {
     $w = $null
-    for ($i = 0; $i -lt 50 -and -not $w; $i++) {
+    for ($i = 0; $i -lt 100 -and -not $w; $i++) { # up to 20 s: a cold WPF start can take >10 s
         Start-Sleep -Milliseconds 200
         $w = $AT::RootElement.FindFirst([System.Windows.Automation.TreeScope]::Children, (New-Object System.Windows.Automation.PropertyCondition($AT::ProcessIdProperty, $p.Id)))
     }
@@ -53,17 +55,18 @@ try {
     Tab $w 'Tools'
     Tab $w 'Duplicate Finder'
     SetText $w 'dupInclude' $fx
+    Shot $w "makecleaner-$($tag)smoke-dupes-setup.png"
     Click $w 'dupSearch'
     $d = WaitText $w 'dupStatus' 'Found'
     Write-Host "duplicates: $d"
-    Shot $w 'makecleaner-smoke-dupes.png'
+    Shot $w "makecleaner-$($tag)smoke-dupes.png"
 
     Tab $w 'Disk Analyzer'
     SetText $w 'daRoots' $fx
     Click $w 'daScan'
     $a = WaitText $w 'daStatus' 'Analysis complete'
     Write-Host "disk analyzer: $a"
-    Shot $w 'makecleaner-smoke-disk.png'
+    Shot $w "makecleaner-$($tag)smoke-disk.png"
 
     # cancel: start a full scan of the system drive, cancel it, UI must answer right away
     SetText $w 'daRoots' $env:SystemDrive\

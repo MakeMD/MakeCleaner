@@ -18,7 +18,13 @@ public partial class MainWindow : Window
 
         cleaner = new CleanerView(settings);
         // Rail sections; Registry / Tools / Options get their screens in tickets 15-18.
-        pages = [cleaner, new SubNavPage("Registry"), new SubNavPage("Tools"), new SubNavPage("Options")];
+        pages = [cleaner, new SubNavPage("Registry"),
+            new SubNavPage("Tools")
+                .Add("Duplicate Finder", () => new DuplicatesView())
+                .Add("Disk Analyzer", () => new DiskAnalyzerView())
+                .Add("Drive Wiper", () => new DriveWiperView())
+                .Add("System Restore", () => new RestoreView()),
+            new SubNavPage("Options")];
         foreach (var (glyph, label) in new[] { ("", "Cleaner"), ("", "Registry"), ("", "Tools"), ("", "Options") })
         {
             var tile = new StackPanel();
