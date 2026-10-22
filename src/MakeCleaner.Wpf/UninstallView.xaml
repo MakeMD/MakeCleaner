@@ -2,7 +2,7 @@
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
     <DockPanel>
-        <StackPanel DockPanel.Dock="Right" Style="{StaticResource ToolColumn}">
+        <StackPanel DockPanel.Dock="Right" Style="{StaticResource ButtonColumn}">
             <Button x:Name="uninstall" Content="Run Uninstaller" AutomationProperties.AutomationId="uninstallRun" />
             <Button x:Name="repair" Content="Repair" AutomationProperties.AutomationId="uninstallRepair" />
             <Button x:Name="change" Content="Change" AutomationProperties.AutomationId="uninstallChange" />

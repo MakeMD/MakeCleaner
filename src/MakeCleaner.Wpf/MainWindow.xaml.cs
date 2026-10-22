@@ -20,7 +20,11 @@ public partial class MainWindow : Window
         // Rail sections; Registry / Tools / Options get their screens in tickets 15-18.
         var tools = new SubNavPage("Tools")
             .Add("Uninstall", () => new UninstallView())
-            .Add("Startup", () => new StartupView());
+            .Add("Startup", () => new StartupView())
+            .Add("Duplicate Finder", () => new DuplicatesView())
+            .Add("Disk Analyzer", () => new DiskAnalyzerView())
+            .Add("Drive Wiper", () => new DriveWiperView())
+            .Add("System Restore", () => new RestoreView());
         pages = [cleaner, new RegistryView(settings), tools, new SubNavPage("Options")];
         foreach (var (glyph, label) in new[] { ("", "Cleaner"), ("", "Registry"), ("", "Tools"), ("", "Options") })
         {

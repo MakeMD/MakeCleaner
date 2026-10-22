@@ -15,6 +15,7 @@
     <SolidColorBrush x:Key="Accent" Color="#1A9E7A" />
     <SolidColorBrush x:Key="AccentDark" Color="#13826A" />
     <SolidColorBrush x:Key="AccentSoft" Color="#E3F4EE" />
+    <SolidColorBrush x:Key="Danger" Color="#B3261E" />
     <FontFamily x:Key="Icons">Segoe Fluent Icons, Segoe MDL2 Assets</FontFamily>
 
     <!-- Buttons: flat, 4 px radius; Primary = the one action that changes the disk. -->
@@ -50,6 +51,17 @@
         <Setter Property="BorderBrush" Value="{StaticResource Accent}" />
         <Setter Property="Foreground" Value="White" />
         <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+
+    <!-- Tool pages: the column of equal-width action buttons on the right of the list. -->
+    <Style x:Key="ButtonColumn" TargetType="StackPanel">
+        <Setter Property="Width" Value="160" />
+        <Setter Property="Margin" Value="12,0,0,0" />
+        <Style.Resources>
+            <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+                <Setter Property="Margin" Value="0,0,0,8" />
+            </Style>
+        </Style.Resources>
     </Style>
 
     <Style TargetType="ProgressBar">
@@ -147,17 +159,6 @@
                 </Style>
             </Setter.Value>
         </Setter>
-    </Style>
-
-    <!-- Tool pages: report list + a column of equal-width action buttons on its right. -->
-    <Style x:Key="ToolColumn" TargetType="StackPanel">
-        <Setter Property="Width" Value="150" />
-        <Setter Property="Margin" Value="12,0,0,0" />
-        <Style.Resources>
-            <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
-                <Setter Property="Margin" Value="0,0,0,8" />
-            </Style>
-        </Style.Resources>
     </Style>
 
     <!-- Check trees (Cleaner tabs): group -> items, one CheckNode each; groups show the third state. -->

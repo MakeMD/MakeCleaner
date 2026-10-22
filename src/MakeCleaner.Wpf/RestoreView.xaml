@@ -1,0 +1,19 @@
+<UserControl x:Class="MakeCleaner.RestoreView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <DockPanel>
+        <TextBlock x:Name="status" DockPanel.Dock="Bottom" Margin="0,10,0,0" TextWrapping="Wrap" AutomationProperties.AutomationId="rpStatus" />
+        <StackPanel DockPanel.Dock="Right" Style="{StaticResource ButtonColumn}">
+            <Button x:Name="remove" Content="Remove" IsEnabled="False" AutomationProperties.AutomationId="rpRemove" />
+            <Button x:Name="admin" Content="Restart as admin" ToolTip="Restart MakeCleaner as administrator" Visibility="Collapsed" AutomationProperties.AutomationId="rpAdmin" />
+        </StackPanel>
+        <ListView x:Name="view" SelectionMode="Single" BorderBrush="{StaticResource Line}" AutomationProperties.AutomationId="restorePoints">
+            <ListView.View>
+                <GridView>
+                    <GridViewColumn Header="Description" Width="380" DisplayMemberBinding="{Binding Description}" />
+                    <GridViewColumn Header="Date" Width="150" DisplayMemberBinding="{Binding Date}" />
+                </GridView>
+            </ListView.View>
+        </ListView>
+    </DockPanel>
+</UserControl>
