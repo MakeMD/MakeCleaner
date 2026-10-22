@@ -1,10 +1,11 @@
 # GUI smoke for Tools > Uninstall / Startup: READ-ONLY. Opens the tabs via UI Automation (no keystrokes),
 # waits for each list to fill, prints row counts, saves screenshots. Never clicks an action button. Pure ASCII (PS 5.1).
-param([int]$Screen = 1, [string]$Config = 'Debug', [string]$BinDir = '', [string]$ShotDir = $env:TEMP)
+param([int]$Screen = 1, [string]$Config = 'Debug', [string]$BinDir = '', [switch]$Wpf, [string]$ShotDir = $env:TEMP)
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
-$bin = if ($BinDir) { $BinDir } else { Join-Path $root "src\MakeCleaner\bin\$Config\net10.0-windows" } # -BinDir: a published copy (tools\releasecheck.ps1)
-$exe = Join-Path $bin 'MakeCleaner.exe'
+$app = if ($Wpf) { 'MakeCleaner.Wpf' } else { 'MakeCleaner' } # -Wpf: the WPF window; WinForms stays the default until ticket 19
+$bin = if ($BinDir) { $BinDir } else { Join-Path $root "src\$app\bin\$Config\net10.0-windows" } # -BinDir: a published copy (tools\releasecheck.ps1)
+$exe = Join-Path $bin "$app.exe"
 . (Join-Path $PSScriptRoot 'screenpin.ps1')
 Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes, System.Drawing
 $AT = [System.Windows.Automation.AutomationElement]
@@ -12,10 +13,12 @@ $TS = [System.Windows.Automation.TreeScope]
 Set-Content (Join-Path $bin 'portable.dat') '#PORTABLE#'  # keep settings next to the exe, cleaned up below
 
 function ById($w, $id) { $w.FindFirst($TS::Descendants, (New-Object System.Windows.Automation.PropertyCondition($AT::AutomationIdProperty, $id))) }
+# WinForms: every level is a tab. WPF: the rail and the Tools sub-menu are list items, Startup kinds are tabs.
 function SelectTab($w, $name) {
-    $c = New-Object System.Windows.Automation.AndCondition(
+    $kind = New-Object System.Windows.Automation.OrCondition(
         (New-Object System.Windows.Automation.PropertyCondition($AT::ControlTypeProperty, [System.Windows.Automation.ControlType]::TabItem)),
-        (New-Object System.Windows.Automation.PropertyCondition($AT::NameProperty, $name)))
+        (New-Object System.Windows.Automation.PropertyCondition($AT::ControlTypeProperty, [System.Windows.Automation.ControlType]::ListItem)))
+    $c = New-Object System.Windows.Automation.AndCondition($kind, (New-Object System.Windows.Automation.PropertyCondition($AT::NameProperty, $name)))
     $t = $w.FindFirst($TS::Descendants, $c)
     if (-not $t) { throw "tab '$name' not found" }
     $t.GetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern).Select()
@@ -24,7 +27,10 @@ function Rows($w, $id) {
     for ($i = 0; $i -lt 75; $i++) {
         $l = ById $w $id
         if ($l) {
-            $n = $l.FindAll($TS::Children, (New-Object System.Windows.Automation.PropertyCondition($AT::ControlTypeProperty, [System.Windows.Automation.ControlType]::ListItem))).Count
+            $rows = New-Object System.Windows.Automation.OrCondition( # WinForms ListView rows = ListItem, WPF GridView rows = DataItem
+                (New-Object System.Windows.Automation.PropertyCondition($AT::ControlTypeProperty, [System.Windows.Automation.ControlType]::ListItem)),
+                (New-Object System.Windows.Automation.PropertyCondition($AT::ControlTypeProperty, [System.Windows.Automation.ControlType]::DataItem)))
+            $n = $l.FindAll($TS::Children, $rows).Count
             if ($n -gt 0) { return $n }
         }
         Start-Sleep -Milliseconds 200
@@ -35,14 +41,14 @@ function Shot($w, $name) {
     $r = $w.Current.BoundingRectangle
     $bmp = New-Object System.Drawing.Bitmap ([int]$r.Width), ([int]$r.Height)
     [System.Drawing.Graphics]::FromImage($bmp).CopyFromScreen([int]$r.X, [int]$r.Y, 0, 0, $bmp.Size)
-    $p = Join-Path $ShotDir "makecleaner-$name.png"; $bmp.Save($p); Write-Host "screenshot: $p"
+    $p = Join-Path $ShotDir ("makecleaner-" + $(if ($Wpf) { 'wpf-' } else { '' }) + "$name.png"); $bmp.Save($p); Write-Host "screenshot: $p"
 }
 
 Start-ScreenPin -Screen $Screen -Exe $exe
 $p = Start-Process $exe -PassThru
 try {
     $w = $null
-    for ($i = 0; $i -lt 50 -and -not $w; $i++) {
+    for ($i = 0; $i -lt 100 -and -not $w; $i++) { # up to 20 s: a cold WPF start can take >10 s
         Start-Sleep -Milliseconds 200
         $w = $AT::RootElement.FindFirst($TS::Children, (New-Object System.Windows.Automation.PropertyCondition($AT::ProcessIdProperty, $p.Id)))
     }
