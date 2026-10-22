@@ -70,7 +70,8 @@ public static class Engine
     }
 
     // Deletes exactly the files Analyze returned; locked/denied ones are skipped and counted.
-    public static CleanResult Clean(IEnumerable<FileInfo> files)
+    // passes > 0 = secure deletion (see SecureDelete.Methods).
+    public static CleanResult Clean(IEnumerable<FileInfo> files, int passes = 0)
     {
         int deleted = 0, skipped = 0;
         long bytes = 0;
@@ -82,7 +83,7 @@ public static class Engine
                 if (!f.Exists) continue;
                 var len = f.Length;
                 if (f.IsReadOnly) f.IsReadOnly = false;
-                f.Delete();
+                SecureDelete.Delete(f.FullName, passes);
                 deleted++;
                 bytes += len;
             }
