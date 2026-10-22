@@ -22,10 +22,14 @@ function Status($w) { $w.FindFirst([System.Windows.Automation.TreeScope]::Descen
 function Click($w, $id) { $w.FindFirst([System.Windows.Automation.TreeScope]::Descendants, (New-Object System.Windows.Automation.PropertyCondition($AT::AutomationIdProperty, $id))).GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke() }
 function WaitStatus($w, $prefix) { for ($i = 0; $i -lt 50; $i++) { $s = Status $w; if ($s -like "$prefix*") { return $s }; Start-Sleep -Milliseconds 200 }; throw "timeout waiting for '$prefix', last: $s" }
 
+# Browser items default to on and this smoke clicks Run Cleaner: point AppData at an empty folder so no real browser is found.
+$noApps = Join-Path ([IO.Path]::GetTempPath()) ('mc-smoke-noapps-' + [guid]::NewGuid().ToString('N'))
+New-Item -ItemType Directory -Force $noApps | Out-Null
 Start-ScreenPin -Screen $Screen -Exe $exe
-$oldTemp = $env:TEMP; $env:TEMP = $fx
+$old = $env:TEMP, $env:LOCALAPPDATA, $env:APPDATA
+$env:TEMP = $fx; $env:LOCALAPPDATA = $noApps; $env:APPDATA = $noApps
 $p = Start-Process $exe -PassThru
-$env:TEMP = $oldTemp
+$env:TEMP, $env:LOCALAPPDATA, $env:APPDATA = $old
 try {
     $w = $null
     for ($i = 0; $i -lt 50 -and -not $w; $i++) {
@@ -54,6 +58,6 @@ try {
 } finally {
     Stop-ScreenPin
     if (-not $p.HasExited) { $p.Kill() }
-    Remove-Item -Recurse -Force $fx -ErrorAction SilentlyContinue
+    Remove-Item -Recurse -Force $fx, $noApps -ErrorAction SilentlyContinue
     Remove-Item (Join-Path $bin 'portable.dat'), (Join-Path $bin 'MakeCleaner.ini') -ErrorAction SilentlyContinue
 }

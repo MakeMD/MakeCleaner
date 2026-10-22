@@ -21,7 +21,8 @@ public class WindowsTabTests : IDisposable
     [Fact]
     public void Rule_set_groups_specials_and_warnings_are_consistent()
     {
-        Assert.Equal(["Microsoft Edge", "Windows Explorer", "System", "Advanced"], Windows.Select(r => r.Group).Distinct());
+        // Edge lives in the Browsers tab (Browsers.cs), not in rules\Windows.ini.
+        Assert.Equal(["Windows Explorer", "System", "Advanced"], Windows.Select(r => r.Group).Distinct());
         foreach (var k in Windows.SelectMany(r => r.SpecialKeys))
             Assert.True(Special.Files.ContainsKey(k) || Special.Actions.ContainsKey(k) || k == Special.WipeFreeSpace, k);
         foreach (var r in Windows.Where(r => r.Group == "Advanced"))
