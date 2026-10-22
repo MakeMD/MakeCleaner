@@ -17,7 +17,7 @@ public partial class MainWindow : Window
             MessageBox.Show(this, warning, title, MessageBoxButton.OKCancel, MessageBoxImage.Warning) == MessageBoxResult.OK;
 
         cleaner = new CleanerView(settings);
-        // Rail sections; Registry / Tools / Options get their screens in tickets 15-18.
+        // Rail sections: Cleaner, Registry, Tools (sub-menu), Options (sub-menu).
         var tools = new SubNavPage("Tools")
             .Add("Uninstall", () => new UninstallView())
             .Add("Startup", () => new StartupView())
@@ -25,7 +25,7 @@ public partial class MainWindow : Window
             .Add("Disk Analyzer", () => new DiskAnalyzerView())
             .Add("Drive Wiper", () => new DriveWiperView())
             .Add("System Restore", () => new RestoreView());
-        pages = [cleaner, new RegistryView(settings), tools, new SubNavPage("Options")];
+        pages = [cleaner, new RegistryView(settings), tools, OptionsPages.Build(settings)];
         foreach (var (glyph, label) in new[] { ("", "Cleaner"), ("", "Registry"), ("", "Tools"), ("", "Options") })
         {
             var tile = new StackPanel();
@@ -41,11 +41,7 @@ public partial class MainWindow : Window
 
         var v = FileVersionInfo.GetVersionInfo(Environment.ProcessPath!).ProductVersion;
         version.Text = $"MakeCleaner {v}  ·  no telemetry, no ads, no network access";
-        about.Click += (_, _) => MessageBox.Show(this,
-            $"MakeCleaner {v}\n\nNo telemetry, no ads, no network access.\n\n" +
-            "Applications rules: Winapp2.ini by the Winapp2 project (github.com/MoscaDotTo/Winapp2), " +
-            "licensed CC BY-SA 4.0, shipped unmodified in rules\\Winapp2.ini.\n\n" +
-            "Third-party components: see THIRD-PARTY-NOTICES.txt next to the program.", "About MakeCleaner");
+        about.Click += (_, _) => MessageBox.Show(this, OptionsPages.AboutText, "About MakeCleaner");
         Closing += (_, _) => cleaner.SaveChecks();
     }
 }

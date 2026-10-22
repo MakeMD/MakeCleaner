@@ -3,11 +3,12 @@
 # lists, then Analyze and Run Cleaner ON THE FIXTURE: kept domains must survive, the rest must go.
 # If a real Chrome/Firefox is running, Clean would ask to close it, so the smoke stops after Analyze (never answers).
 # Windows-tab rules are all off via the ini. UI Automation, no keystrokes. Pure ASCII (PS 5.1).
-param([int]$Screen = 1, [string]$Config = 'Debug', [string]$BinDir = '', [string]$ShotDir = $env:TEMP)
+param([int]$Screen = 1, [string]$Config = 'Debug', [string]$BinDir = '', [switch]$Wpf, [string]$ShotDir = $env:TEMP)
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
-$bin = if ($BinDir) { $BinDir } else { Join-Path $root "src\MakeCleaner\bin\$Config\net10.0-windows" } # -BinDir: a published copy (tools\releasecheck.ps1)
-$exe = Join-Path $bin 'MakeCleaner.exe'
+$app = if ($Wpf) { 'MakeCleaner.Wpf' } else { 'MakeCleaner' } # -Wpf: the WPF window; WinForms stays the default until ticket 19
+$bin = if ($BinDir) { $BinDir } else { Join-Path $root "src\$app\bin\$Config\net10.0-windows" } # -BinDir: a published copy (tools\releasecheck.ps1)
+$exe = Join-Path $bin "$app.exe"
 . (Join-Path $PSScriptRoot 'screenpin.ps1')
 Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes, System.Drawing
 $AT = [System.Windows.Automation.AutomationElement]
@@ -45,7 +46,9 @@ function Id($w, $id) { Find $w $AT::AutomationIdProperty $id }
 function Tab($w, $name) {
     $c = New-Object System.Windows.Automation.AndCondition(
         (New-Object System.Windows.Automation.PropertyCondition($AT::NameProperty, $name)),
-        (New-Object System.Windows.Automation.PropertyCondition($AT::ControlTypeProperty, [System.Windows.Automation.ControlType]::TabItem)))
+        (New-Object System.Windows.Automation.OrCondition(
+            (New-Object System.Windows.Automation.PropertyCondition($AT::ControlTypeProperty, [System.Windows.Automation.ControlType]::TabItem)),
+            (New-Object System.Windows.Automation.PropertyCondition($AT::ControlTypeProperty, [System.Windows.Automation.ControlType]::ListItem)))))
     $w.FindFirst($Desc, $c).GetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern).Select()
 }
 function Click($w, $id) { (Id $w $id).GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke() }
@@ -66,7 +69,7 @@ $p = Start-Process $exe -PassThru
 $env:TEMP, $env:LOCALAPPDATA, $env:APPDATA = $old
 try {
     $w = $null
-    for ($i = 0; $i -lt 50 -and -not $w; $i++) {
+    for ($i = 0; $i -lt 100 -and -not $w; $i++) {
         Start-Sleep -Milliseconds 200
         $w = $AT::RootElement.FindFirst([System.Windows.Automation.TreeScope]::Children, (New-Object System.Windows.Automation.PropertyCondition($AT::ProcessIdProperty, $p.Id)))
     }
@@ -74,6 +77,7 @@ try {
     WaitText $w 'status' '*applications detected' | Out-Null
 
     Tab $w 'Options'
+    if ($Wpf) { Tab $w 'Cookies' } # WPF Options has a sub-menu
     $scan = WaitText $w 'cookieStatus' '*domains with cookies*'
     $all = (Items $w 'cookieAll') -join ';'
     $keep = (Items $w 'cookieKeep') -join ';'
