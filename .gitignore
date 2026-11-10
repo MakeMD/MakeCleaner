@@ -6,3 +6,4 @@ obj/
 dist/
 .zig-cache/
 zig-out/
+zig-pkg/
