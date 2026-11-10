@@ -1170,6 +1170,7 @@ test "Paths past MAX_PATH are enumerated, deleted and REMOVESELF-removed" {
     try rel.appendSlice(f.a(), "\\deep.log");
     const deep = try f.touch(rel.items, 7);
     try testing.expect(deep.len > 300);
+    try testing.expect(fs.isFile(deep) and fs.exists(deep) and !fs.isDir(deep) and fs.isDir(Io.Dir.path.dirname(deep).?));
     const r = try f.one(try f.fmt("[T]\nFileKey1={s}\\long|*.log|REMOVESELF", .{f.dir()}));
     const found = try f.analyze(&r, &.{});
     try testing.expectEqual(1, found.len);

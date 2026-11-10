@@ -46,7 +46,7 @@ pub const Page = struct {
     bar_done: u64 = 0,
     bar_total: u64 = 0,
     selected: ?usize = null,
-    dialog: g.Dialog = .{},
+    dialog: ui.Dialog = .{},
 
     backup_path: []u8 = &.{},
     review_rows: []usize = &.{},
@@ -91,7 +91,7 @@ pub const Page = struct {
 
     pub fn draw(self: *Page, ctx: *Ctx) void {
         const p = self;
-        if (ui.jobDone(&p.work)) p.finishWork();
+        if (p.work.takeFinished()) p.finishWork();
         if (p.work.isRunning()) {
             p.bar_done = p.work.done.load(.acquire);
             p.bar_total = p.work.total.load(.acquire);
@@ -313,7 +313,7 @@ pub const Page = struct {
                     p.phase = .idle;
                     var buf: [700]u8 = undefined;
                     const msg: []const u8 = std.mem.print(&buf, "The backup could not be written, so nothing was changed.\n{s}", .{e}) catch "The backup could not be written, so nothing was changed.";
-                    p.dialog.show(0, .err, "Registry backup", msg, &.{"OK"});
+                    p.dialog.show(0, "Registry backup", .err, &.{"OK"}, "{s}", .{msg});
                     p.freeReview();
                 } else {
                     p.phase = .fixing;

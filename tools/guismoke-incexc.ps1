@@ -24,11 +24,11 @@ try {
     function Analyze() {
         Invoke-AutoClick $app 'Cleaner'
         Invoke-AutoClick $app 'Analyze##analyze'
-        (Wait-McLabel $app 'Analysis complete*##status').label
+        (Wait-AutoLabel $app 'Analysis complete*##status').label
     }
     function Open() {
         $a = Start-McApp $sb -Screen $Screen
-        $null = Wait-McLabel $a '*applications detected##status' # app detection must not overwrite the analyze status later
+        $null = Wait-AutoLabel $a '*applications detected##status' # app detection must not overwrite the analyze status later
         $a
     }
 
@@ -36,11 +36,11 @@ try {
     Invoke-AutoClick $app 'Options'; Invoke-AutoClick $app 'Include##optionsNav1'
     Set-McText $app '##incPath' 'C:\'
     Invoke-AutoClick $app 'Add##incAdd'; $null = Invoke-AutoFrames $app 2
-    $rej = Get-McText $app 'incStatus'
+    $rej = Get-AutoText $app '##incStatus'
     Write-Host "reject C:\ : $rej"
     Set-McText $app '##incPath' 'C:\Windows'
     Invoke-AutoClick $app 'Add##incAdd'; $null = Invoke-AutoFrames $app 2
-    $rejWin = Get-McText $app 'incStatus'
+    $rejWin = Get-AutoText $app '##incStatus'
     Write-Host "reject C:\Windows : $rejWin"
     Set-McText $app '##incAge' '48'
     Set-McText $app '##incPath' $fx

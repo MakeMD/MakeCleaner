@@ -117,7 +117,7 @@ pub const View = struct {
 
     pub fn draw(v: *View, ctx: *Ctx) void {
         const s = ui.scale();
-        if (ui.jobDone(&v.job)) {
+        if (v.job.takeFinished()) {
             std.mem.swap(std.heap.ArenaAllocator, &v.arena, &v.next_arena);
             v.err = if (v.job.errorText(&v.err_buf)) |e| e else null;
             v.apps = if (v.err == null) v.next_apps else &.{};

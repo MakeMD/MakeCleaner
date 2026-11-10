@@ -224,7 +224,7 @@ pub const View = struct {
 
     pub fn draw(v: *View, ctx: *Ctx) void {
         const s = ui.scale();
-        if (ui.jobDone(&v.job)) {
+        if (v.job.takeFinished()) {
             var eb: [256]u8 = undefined;
             if (v.deleting) {
                 v.deleting = false;
@@ -269,22 +269,22 @@ pub const View = struct {
             const busy = v.job.isRunning();
             im.ImGui_BeginDisabled(busy);
             head("Match by", col2);
-            _ = ui.check("Name##byName", &v.by_name);
+            _ = kit.ui.checkbox("Name##byName", &v.by_name);
             im.ImGui_SameLineEx(0, 18 * s);
-            _ = ui.check("Size##bySize", &v.by_size);
+            _ = kit.ui.checkbox("Size##bySize", &v.by_size);
             im.ImGui_SameLineEx(0, 18 * s);
-            _ = ui.check("Modified date##byDate", &v.by_date);
+            _ = kit.ui.checkbox("Modified date##byDate", &v.by_date);
             im.ImGui_SameLineEx(0, 18 * s);
-            _ = ui.check("Content##byContent", &v.by_content);
+            _ = kit.ui.checkbox("Content##byContent", &v.by_content);
 
             head("Ignore", col2);
-            _ = ui.check("Zero-byte files##noEmpty", &v.no_empty);
+            _ = kit.ui.checkbox("Zero-byte files##noEmpty", &v.no_empty);
             im.ImGui_SameLineEx(0, 18 * s);
-            _ = ui.check("System files##noSystem", &v.no_system);
+            _ = kit.ui.checkbox("System files##noSystem", &v.no_system);
             im.ImGui_SameLineEx(0, 18 * s);
-            _ = ui.check("Hidden files##noHidden", &v.no_hidden);
+            _ = kit.ui.checkbox("Hidden files##noHidden", &v.no_hidden);
             im.ImGui_SameLineEx(0, 18 * s);
-            _ = ui.check("Read-only files##noReadOnly", &v.no_read_only);
+            _ = kit.ui.checkbox("Read-only files##noReadOnly", &v.no_read_only);
 
             head("Size (MB)", col2);
             ui.label("from");
@@ -395,7 +395,7 @@ pub const View = struct {
         lb[1] = '#';
         const chk = ui.idLabel(lb[2..], f.path, "dupChk{d}", .{i});
         im.ImGui_BeginDisabled(v.job.isRunning());
-        _ = ui.check(lb[0 .. chk.len + 2 :0], &v.checked.items[i]);
+        _ = kit.ui.checkbox(lb[0 .. chk.len + 2 :0], &v.checked.items[i]);
         im.ImGui_EndDisabled();
         _ = im.ImGui_TableNextColumn();
         const name = std.fs.path.basename(f.path);

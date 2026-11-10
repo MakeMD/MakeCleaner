@@ -28,7 +28,7 @@ try {
     Set-McText $app '##dupInclude' $fx
     Save-McShot $app (Join-Path $ShotDir 'makecleaner-smoke-dupes-setup.png')
     Invoke-AutoClick $app 'Search##dupSearch'
-    $d = (Wait-McLabel $app 'Found*##dupStatus' 20000).label
+    $d = (Wait-AutoLabel $app 'Found*##dupStatus' 20000).label
     Write-Host "duplicates: $d"
     Save-McShot $app (Join-Path $ShotDir 'makecleaner-smoke-dupes.png')
 
@@ -36,7 +36,7 @@ try {
     $null = Wait-AutoItem $app '##daRoots' 3000
     Set-McText $app '##daRoots' $fx
     Invoke-AutoClick $app 'Analyze##daScan'
-    $a = (Wait-McLabel $app 'Analysis complete*##daStatus' 20000).label
+    $a = (Wait-AutoLabel $app 'Analysis complete*##daStatus' 20000).label
     Write-Host "disk analyzer: $a"
     Save-McShot $app (Join-Path $ShotDir 'makecleaner-smoke-disk.png')
 
@@ -47,7 +47,7 @@ try {
     Start-Sleep -Milliseconds 700
     $sw = [Diagnostics.Stopwatch]::StartNew()
     Invoke-AutoClick $app 'Cancel##daScan'
-    $c = (Wait-McLabel $app 'Cancelled*##daStatus' 10000).label
+    $c = (Wait-AutoLabel $app 'Cancelled*##daStatus' 10000).label
     Write-Host ("cancel: $c in {0} ms" -f $sw.ElapsedMilliseconds)
 
     $code = Close-McApp $app

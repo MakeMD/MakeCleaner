@@ -58,7 +58,7 @@ try {
     $app = Start-McApp $sb -Screen $Screen
 
     # ---------------- Cleaner
-    $null = Wait-McLabel $app '*applications detected##status'
+    $null = Wait-AutoLabel $app '*applications detected##status'
     Shot 'cleaner-start'
     # collapse the groups above Advanced so its items are on screen (automation clicks visible items only)
     foreach ($gname in @('Windows Explorer', 'System')) { Invoke-AutoClick $app "##wt:$gname" }
@@ -66,9 +66,9 @@ try {
     $wipe = Item 'Wipe Free Space##wi:Wipe Free Space'
     Check (-not $wipe.checked) 'Wipe Free Space starts off'
     Invoke-AutoClick $app 'Wipe Free Space##wi:Wipe Free Space'
-    $null = Item 'Turn on##dialogButton0'
+    $null = Item 'Turn on##msgButton0'
     Shot 'cleaner-warning'
-    Invoke-AutoClick $app 'Cancel##dialogButton1'
+    Invoke-AutoClick $app 'Cancel##msgButton1'
     $null = Invoke-AutoFrames $app 3
     Check (-not (Item 'Wipe Free Space##wi:Wipe Free Space').checked) 'warning Cancel leaves the box off'
     # group tick: Advanced has risky items -> ticks only safe ones; next click (all safe on) unticks all
@@ -90,17 +90,17 @@ try {
     Invoke-AutoClick $app 'Windows##tabWindows'
 
     Invoke-AutoClick $app 'Analyze##analyze'
-    $st = Wait-McLabel $app 'Analysis complete*##status' 60000
+    $st = Wait-AutoLabel $app 'Analysis complete*##status' 60000
     Write-Host "status: $($st.label)"
     Check ((Item 'Run Cleaner##clean').disabled -eq $false) 'Run Cleaner enabled after a non-empty analysis'
     Shot 'cleaner-summary'
     Invoke-AutoClick $app 'Files##viewFiles'; $null = Invoke-AutoFrames $app 3
-    $keep = Wait-McLabel $app '*keep.txt##l*'
+    $keep = Wait-AutoLabel $app '*keep.txt##l*'
     Invoke-AutoClick $app $keep.label -Kind rclick
     $null = Item 'Add file to Exclude'
     Shot 'cleaner-files-menu'
     Invoke-AutoClick $app 'Add file to Exclude'
-    $null = Wait-McLabel $app 'Added to Exclude:*keep.txt*##status'
+    $null = Wait-AutoLabel $app 'Added to Exclude:*keep.txt*##status'
     Gone '*keep.txt##l*'
 
     # fake running Edge: a renamed ping.exe of our own (killed by PID below)
@@ -108,24 +108,24 @@ try {
     Copy-Item (Join-Path $env:WINDIR 'System32\PING.EXE') $fakeExe
     $fakeEdge = Start-Process -FilePath $fakeExe -ArgumentList '-n', '300', '127.0.0.1' -WindowStyle Hidden -PassThru
     Invoke-AutoClick $app 'Run Cleaner##clean'
-    $null = Item 'Skip##dialogButton1'
+    $null = Item 'Skip##msgButton1'
     Shot 'cleaner-browser-running'
-    Invoke-AutoClick $app 'Cancel##dialogButton2'; $null = Invoke-AutoFrames $app 3
+    Invoke-AutoClick $app 'Cancel##msgButton2'; $null = Invoke-AutoFrames $app 3
     Check (Test-Path (Join-Path $junk 'a.tmp')) 'Cancel on the browser dialog cleans nothing'
     Invoke-AutoClick $app 'Run Cleaner##clean'
-    $null = Item 'Skip##dialogButton1'
+    $null = Item 'Skip##msgButton1'
     $real = @(Get-Process msedge -ErrorAction SilentlyContinue | Where-Object { $_.Id -ne $fakeEdge.Id })
     if ($real.Count -eq 0) {
-        Invoke-AutoClick $app 'Close Microsoft Edge##dialogButton0' # only our fake runs: it has no window, so it never closes
-        $null = Wait-McLabel $app 'Closing Microsoft Edge*##status' 5000
-        $null = Wait-McLabel $app '*did not close*##dialogText' 20000
+        Invoke-AutoClick $app 'Close Microsoft Edge##msgButton0' # only our fake runs: it has no window, so it never closes
+        $null = Wait-AutoLabel $app 'Closing Microsoft Edge*##status' 5000
+        $null = Wait-AutoLabel $app '*did not close*##msgText' 20000
         Shot 'cleaner-not-closed'
-        Invoke-AutoClick $app 'OK##dialogButton0'
+        Invoke-AutoClick $app 'OK##msgButton0'
     } else {
         Write-Host 'real Edge is running: Skip instead of Close'
-        Invoke-AutoClick $app 'Skip##dialogButton1'
+        Invoke-AutoClick $app 'Skip##msgButton1'
     }
-    $st = Wait-McLabel $app 'Cleaning complete*##status' 60000
+    $st = Wait-AutoLabel $app 'Cleaning complete*##status' 60000
     Write-Host "status: $($st.label)"
     Shot 'cleaner-cleaned'
     Check ($st.label -like '*skipped running: Microsoft Edge*') 'running Edge left out'
@@ -143,66 +143,66 @@ try {
 
     # ---------------- About
     Invoke-AutoClick $app 'About##about'
-    $null = Wait-McLabel $app 'MakeCleaner 2.0.0*##dialogText' 5000
+    $null = Wait-AutoLabel $app 'MakeCleaner 2.0.0*##msgText' 5000
     Shot 'about'
     Invoke-AutoKey $app 'Enter'; $null = Invoke-AutoFrames $app 3
-    Gone '*##dialogText'
+    Gone '*##msgText'
 
     # ---------------- Registry
     Invoke-AutoClick $app 'Registry'
-    $null = Wait-McLabel $app 'Pick the categories*##regstatus' 5000
+    $null = Wait-AutoLabel $app 'Pick the categories*##regstatus' 5000
     Invoke-AutoClick $app 'All categories##regall'; $null = Invoke-AutoFrames $app 2
     Check ((Item 'All categories##regall').checked -and (Item 'Fonts##regcat:Fonts').checked) 'All categories from mixed -> all on'
     Invoke-AutoClick $app 'Scan for Issues##regscan'
     Invoke-AutoClick $app 'Cancel##regcancel'
-    $st = Wait-McLabel $app 'Scan c*##regstatus' 120000
+    $st = Wait-AutoLabel $app 'Scan c*##regstatus' 120000
     Write-Host "scan + cancel: $($st.label)"
     Invoke-AutoClick $app 'All categories##regall'; $null = Invoke-AutoFrames $app 2
     Check (-not (Item 'MUI Cache##regcat:MUI Cache').checked) 'All categories from on -> all off'
     Invoke-AutoClick $app 'Scan for Issues##regscan'
-    $null = Wait-McLabel $app 'Tick at least one category*##regstatus' 5000
+    $null = Wait-AutoLabel $app 'Tick at least one category*##regstatus' 5000
     Invoke-AutoClick $app 'MUI Cache##regcat:MUI Cache'
     Shot 'registry-start'
     Invoke-AutoClick $app 'Scan for Issues##regscan'
-    $st = Wait-McLabel $app 'Scan complete*##regstatus' 60000
+    $st = Wait-AutoLabel $app 'Scan complete*##regstatus' 60000
     Write-Host "scan: $($st.label)"
     Shot 'registry-scanned'
-    $fx3 = Wait-McLabel $app "##rc*:*mc-g1-fixture-$rnd\three.exe*"
+    $fx3 = Wait-AutoLabel $app "##rc*:*mc-g1-fixture-$rnd\three.exe*"
     $row3 = '##row' + ($fx3.label -replace '^##rc(\d+):.*$', '$1')
     Invoke-AutoClick $app $row3 -Kind rclick
     $null = Item 'Add to Exclude list'
     Shot 'registry-menu'
     Invoke-AutoClick $app 'Add to Exclude list'
-    $null = Wait-McLabel $app 'Excluded:*three.exe*##regstatus'
+    $null = Wait-AutoLabel $app 'Excluded:*three.exe*##regstatus'
     Gone "##rc*:*three.exe*"
-    $fx1 = Wait-McLabel $app "##rc*:*mc-g1-fixture-$rnd\one.exe*"
+    $fx1 = Wait-AutoLabel $app "##rc*:*mc-g1-fixture-$rnd\one.exe*"
     Invoke-AutoClick $app ('##row' + ($fx1.label -replace '^##rc(\d+):.*$', '$1')) -Kind rclick
     Invoke-AutoClick $app 'Select none'; $null = Invoke-AutoFrames $app 2
     Check (@(Items | Where-Object { $_.label -like '##rc*' -and $_.checked }).Count -eq 0) 'Select none'
-    foreach ($n in @('one', 'two')) { Invoke-AutoClick $app (Wait-McLabel $app "##rc*:*mc-g1-fixture-$rnd\$n.exe*").label }
+    foreach ($n in @('one', 'two')) { Invoke-AutoClick $app (Wait-AutoLabel $app "##rc*:*mc-g1-fixture-$rnd\$n.exe*").label }
     $null = Invoke-AutoFrames $app 2
     $ticked = @(Items | Where-Object { $_.label -like '##rc*' -and $_.checked })
     Check ($ticked.Count -eq 2 -and @($ticked | Where-Object { $_.label -notlike "*mc-g1-fixture-$rnd*" }).Count -eq 0) 'only the two fixtures ticked'
     Invoke-AutoClick $app 'Review selected Issues...##regfix'
-    $null = Wait-McLabel $app 'Issue 1 of 2*##regcounter' 15000
+    $null = Wait-AutoLabel $app 'Issue 1 of 2*##regcounter' 15000
     Check (@(Get-ChildItem (Join-Path $sb.App 'RegistryBackups') -Filter 'MakeCleaner_registry_*.reg').Count -eq 1) 'silent backup written'
-    $null = Wait-McLabel $app "*mc-g1-fixture-$rnd*##regdetails"
+    $null = Wait-AutoLabel $app "*mc-g1-fixture-$rnd*##regdetails"
     Shot 'registry-fix-dialog'
     Invoke-AutoClick $app '>>##regnext'
-    $null = Wait-McLabel $app 'Issue 2 of 2*##regcounter' 3000
+    $null = Wait-AutoLabel $app 'Issue 2 of 2*##regcounter' 3000
     Invoke-AutoClick $app 'Fix All Selected##regfixall'
-    $null = Item 'Fix all##dialogButton0'
+    $null = Item 'Fix all##msgButton0'
     Shot 'registry-fix-confirm'
     Invoke-AutoKey $app 'Escape'; $null = Invoke-AutoFrames $app 3
-    Gone 'Fix all##dialogButton0'
-    $det = Wait-McLabel $app "*mc-g1-fixture-$rnd*##regdetails"
+    Gone 'Fix all##msgButton0'
+    $det = Wait-AutoLabel $app "*mc-g1-fixture-$rnd*##regdetails"
     Check ($det.label -like '*Solution: delete the registry value.*') 'details show the solution'
     Invoke-AutoClick $app 'Fix Issue##regfixone'
-    $null = Wait-McLabel $app 'Issue 1 of 2*##regcounter' 15000
+    $null = Wait-AutoLabel $app 'Issue 1 of 2*##regcounter' 15000
     Check (@($mui.GetValueNames() | Where-Object { $_ -eq $fixNames[0] -or $_ -eq $fixNames[1] }).Count -eq 1) 'Fix Issue removed one fixture'
     Invoke-AutoClick $app 'Fix All Selected##regfixall'
-    Invoke-AutoClick $app 'Fix all##dialogButton0'
-    $st = Wait-McLabel $app 'Fixed 2 issues*##regstatus' 15000
+    Invoke-AutoClick $app 'Fix all##msgButton0'
+    $st = Wait-AutoLabel $app 'Fixed 2 issues*##regstatus' 15000
     Write-Host "fix: $($st.label)"
     Shot 'registry-fixed'
     Check (@($mui.GetValueNames() | Where-Object { $_ -eq $fixNames[0] -or $_ -eq $fixNames[1] }).Count -eq 0) 'Fix All removed the other fixture'
@@ -229,24 +229,24 @@ try {
     for ($i = 0; $i -lt 100; $i++) { [IO.File]::WriteAllBytes((Join-Path $junk ("junk{0:D3}.tmp" -f $i)), $blob) }
     Set-McIni $sb -On 'Custom Files and Folders' -Extra (@("Include1=$junk|*.*|RECURSE", 'SecureDeletePasses=7') + $regIni)
     $app = Start-McApp $sb -Screen $Screen
-    $null = Wait-McLabel $app '*applications detected##status'
+    $null = Wait-AutoLabel $app '*applications detected##status'
     Shot 'cleaner-empty'
     $r = @(Items | Where-Object { $_.label -eq 'Summary##viewSummary' })[0]
     Write-Host ("radio item: " + ($r | ConvertTo-Json -Compress))
 
     Invoke-AutoClick $app 'About##about'
-    $null = Wait-McLabel $app 'MakeCleaner 2.0.0*##dialogText' 5000
+    $null = Wait-AutoLabel $app 'MakeCleaner 2.0.0*##msgText' 5000
     Shot 'about-3frames'
     Settle 600
     Shot 'about-settled'
     Invoke-AutoKey $app 'Enter'; $null = Invoke-AutoFrames $app 3
 
     Invoke-AutoClick $app 'Registry'
-    $null = Wait-McLabel $app 'Pick the categories*##regstatus' 5000
+    $null = Wait-AutoLabel $app 'Pick the categories*##regstatus' 5000
     Shot 'registry-empty'
     Invoke-AutoClick $app 'Scan for Issues##regscan'
-    $null = Wait-McLabel $app 'Scan complete*##regstatus' 60000
-    $fx1 = Wait-McLabel $app "##rc*:*mc-g1-fix-$rnd*one.exe*"
+    $null = Wait-AutoLabel $app 'Scan complete*##regstatus' 60000
+    $fx1 = Wait-AutoLabel $app "##rc*:*mc-g1-fix-$rnd*one.exe*"
     Invoke-AutoClick $app ('##row' + ($fx1.label -replace '^##rc(\d+):.*$', '$1')) -Kind hover
     Settle 1200
     Check (@(Get-AutoItems $app -Windows | Where-Object { $_.name -like '*Tooltip*' }).Count -gt 0) 'cut-off Registry cell shows a tooltip'
@@ -254,12 +254,12 @@ try {
 
     Invoke-AutoClick $app 'Cleaner'; $null = Invoke-AutoFrames $app 3
     Invoke-AutoClick $app 'Analyze##analyze'
-    $st = Wait-McLabel $app 'Analysis complete*##status' 60000
+    $st = Wait-AutoLabel $app 'Analysis complete*##status' 60000
     Write-Host "status: $($st.label)"
     Invoke-AutoClick $app 'Files##viewFiles'; $null = Invoke-AutoFrames $app 3
     Shot 'cleaner-files'
     Invoke-AutoClick $app 'Run Cleaner##clean'
-    $null = Wait-McLabel $app 'Cleaning...##status' 5000
+    $null = Wait-AutoLabel $app 'Cleaning...##status' 5000
     Start-Sleep -Milliseconds 800
     $left = @(Get-ChildItem $junk -File).Count
     Write-Host "files left when closing: $left of 100"

@@ -26,12 +26,12 @@ try {
     $app = Start-McApp $sb -Screen $Screen
     Invoke-AutoClick $app 'Options'
     Invoke-AutoClick $app 'Schedule##optionsNav4'
-    $st = Get-McText $app 'schedStatus'
-    for ($i = 0; $i -lt 50 -and -not $st; $i++) { $null = Invoke-AutoFrames $app 2; Start-Sleep -Milliseconds 100; $st = Get-McText $app 'schedStatus' }
+    $st = Get-AutoText $app '##schedStatus'
+    for ($i = 0; $i -lt 50 -and -not $st; $i++) { $null = Invoke-AutoFrames $app 2; Start-Sleep -Milliseconds 100; $st = Get-AutoText $app '##schedStatus' }
     Write-Host "schedule status: $st"
     Set-McText $app '##schedAt' 'bad'
     Invoke-AutoClick $app 'Create task##schedCreate'; $null = Invoke-AutoFrames $app 2
-    $bad = Get-McText $app 'schedStatus'
+    $bad = Get-AutoText $app '##schedStatus'
     Write-Host "bad time: $bad"
     Save-McShot $app $Shot
     $code = Close-McApp $app

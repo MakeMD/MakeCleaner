@@ -184,7 +184,7 @@ pub const View = struct {
 
     pub fn draw(v: *View, ctx: *Ctx) void {
         const s = ui.scale();
-        if (ui.jobDone(&v.job)) {
+        if (v.job.takeFinished()) {
             var eb: [256]u8 = undefined;
             if (v.deleting) {
                 v.deleting = false;

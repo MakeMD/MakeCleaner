@@ -17,11 +17,11 @@ try {
 
     $app = Start-McApp $sb -Screen $Screen
     Invoke-AutoClick $app 'Analyze##analyze'
-    $a = (Wait-McLabel $app 'Analysis complete*##status').label
+    $a = (Wait-AutoLabel $app 'Analysis complete*##status').label
     Write-Host "analyze: $a"
     Save-McShot $app $Shot
     Invoke-AutoClick $app 'Run Cleaner##clean'
-    $c = (Wait-McLabel $app 'Cleaning complete*##status').label
+    $c = (Wait-AutoLabel $app 'Cleaning complete*##status').label
     Write-Host "clean: $c"
     $left = @(Get-ChildItem $sb.Temp -Recurse -File).Count
     Write-Host "fixture files left: $left"

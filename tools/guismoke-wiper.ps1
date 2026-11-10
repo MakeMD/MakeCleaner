@@ -29,7 +29,7 @@ try {
     if ($drives.Count -eq 0) { $fail += 'no drives' }
     elseif (@($drives | Where-Object { $_.checked }).Count -eq 0) {
         Invoke-AutoClick $app 'Wipe##wipe'; $null = Invoke-AutoFrames $app 2
-        $none = Get-McText $app 'wipeProgress'
+        $none = Get-AutoText $app '##wipeProgress'
         Write-Host "wipe with no drive: $none"
         if ($none -ne 'Select at least one drive.') { $fail += "no-drive message ($none)" }
     }
@@ -37,20 +37,20 @@ try {
         Invoke-AutoClick $app $drives[0].label; $null = Invoke-AutoFrames $app 3
         if (-not (Wait-AutoItem $app $drives[0].label).checked) { $fail += 'drive tick did not stick' }
     }
-    Write-Host ("warning: " + (Get-McText $app 'wipeWarning'))
+    Write-Host ("warning: " + (Get-AutoText $app '##wipeWarning'))
     Write-Host ("wipe button enabled (not clicked): " + (-not (Wait-AutoItem $app 'Wipe##wipe').disabled))
     Save-McShot $app (Join-Path $ShotDir 'makecleaner-drivewiper.png')
     if ($drives.Count -gt 0) { Invoke-AutoClick $app $drives[0].label; $null = Invoke-AutoFrames $app 2 }
 
     Invoke-AutoClick $app 'System Restore##toolsNav5'
     $rp = ''
-    for ($i = 0; $i -lt 50 -and (-not $rp -or $rp -eq 'Loading...'); $i++) { $null = Invoke-AutoFrames $app 2; Start-Sleep -Milliseconds 200; $rp = Get-McText $app 'rpStatus' }
+    for ($i = 0; $i -lt 50 -and (-not $rp -or $rp -eq 'Loading...'); $i++) { $null = Invoke-AutoFrames $app 2; Start-Sleep -Milliseconds 200; $rp = Get-AutoText $app '##rpStatus' }
     Write-Host ("restore status: " + $rp)
     if (-not $rp) { $fail += 'restore status empty' }
     Save-McShot $app (Join-Path $ShotDir 'makecleaner-restore.png')
 
     Invoke-AutoClick $app 'Options'; Invoke-AutoClick $app 'Settings##optionsNav0'
-    $sd = Get-McText $app 'secureDelete' # combo button 'chosen method##secureDelete'
+    $sd = Get-AutoText $app '##secureDelete' # combo '##secureDelete', value = the chosen method
     Write-Host ("secure delete combo: " + $sd)
     if ($null -eq $sd) { $fail += 'secure delete combo missing' } elseif (-not $sd) { $fail += 'secure delete combo has no selection' }
     Invoke-AutoClick $app '##secureDelete'; Invoke-AutoClick $app '##secureDelete2'; Invoke-AutoClick $app '##TempOlderThan24h'

@@ -37,7 +37,7 @@ try {
     }
 
     $app = Start-McApp $sb -Screen $Screen
-    $null = Wait-McLabel $app '*applications detected##status'
+    $null = Wait-AutoLabel $app '*applications detected##status'
     Save-McShot $app (Join-Path $ShotDir 'makecleaner-cleaner-main.png')
 
     # only Temporary Files is on: System shows the third state, Windows Explorer is off
@@ -51,7 +51,7 @@ try {
         Invoke-AutoClick $app 'Analyze##analyze'
         $err = 'ok'
         try { Invoke-AutoClick $app 'Cancel##cancel' } catch { $err = $_.Exception.Message } # too late: this Analyze already finished
-        $c = (Wait-McLabel $app 'Analysis*##status' 60000).label
+        $c = (Wait-AutoLabel $app 'Analysis*##status' 60000).label
         Write-Host ("try {0}: cancel click {1}, status after {2} ms: {3}" -f $try, $err, $sw.ElapsedMilliseconds, $c)
     }
     $cleanAfterCancel = -not (Wait-AutoItem $app 'Run Cleaner##clean').disabled
@@ -59,7 +59,7 @@ try {
 
     # full Analyze, then Summary and Files views
     Invoke-AutoClick $app 'Analyze##analyze'
-    $a = (Wait-McLabel $app 'Analysis complete*##status' 120000).label
+    $a = (Wait-AutoLabel $app 'Analysis complete*##status' 120000).label
     Write-Host "analyze: $a"
     Invoke-AutoClick $app 'Summary##viewSummary'; $null = Invoke-AutoFrames $app 3
     $summaryRows = @(Get-AutoItems $app | Where-Object { $_.label -match '##l\d+$' }).Count

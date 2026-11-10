@@ -119,11 +119,7 @@ pub fn exists(t: RegKey) bool {
     const k = tryOpen(t.key, false, .default) orelse return false;
     defer k.close();
     const v = t.value orelse return true;
-    var stack: [2048]u8 = undefined;
-    var bfa: std.heap.BufferFirstAllocator = .init(&stack, std.heap.page_allocator);
-    const name = win.toW(bfa.allocator(), v) catch return false;
-    defer bfa.allocator().free(name);
-    return w.RegQueryValueExW(k.h, name.ptr, null, null, null, null) == 0;
+    return k.hasValue(v) catch false;
 }
 
 /// Reg.Delete (rule cleaning): false when nothing could be done. A value target deletes just the value; a key
@@ -140,12 +136,9 @@ pub fn delete(t: RegKey) bool {
     const cut = std.mem.findScalarLast(u8, key, '\\') orelse return false;
     const parent = tryOpen(key[0..cut], true, .default) orelse return false;
     defer parent.close();
-    var stack: [2048]u8 = undefined;
-    var bfa: std.heap.BufferFirstAllocator = .init(&stack, std.heap.page_allocator);
-    const leaf = win.toW(bfa.allocator(), key[cut + 1 ..]) catch return false;
-    defer bfa.allocator().free(leaf);
-    const rc = w.RegDeleteTreeW(parent.h, leaf.ptr); // deletes the leaf key itself too
-    return rc == 0 or rc == w.ERROR_FILE_NOT_FOUND; // throwOnMissingSubKey: false
+    // the leaf is never empty (trailing '' trimmed above), so deleteSubTree's empty-leaf NotFound cannot hide a no-op
+    parent.deleteSubTree(key[cut + 1 ..]) catch |e| return e == error.NotFound; // throwOnMissingSubKey: false
+    return true;
 }
 
 test "split: hive aliases, never an empty sub" {

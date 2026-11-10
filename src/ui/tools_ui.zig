@@ -160,14 +160,6 @@ pub fn button(text: [*:0]const u8, enabled: bool) bool {
     return im.ImGui_ButtonEx(text, .{ .x = @max(90 * scale(), im.ImGui_CalcTextSizeEx(text, null, true, -1).x + im.ImGui_GetStyle().*.FramePadding.x * 2), .y = 0 });
 }
 
-/// Checkbox with the compact box of kit.ui.triCheckbox (~20 px, not button-tall).
-pub fn check(lbl: [*:0]const u8, v: *bool) bool {
-    const pad = im.ImGui_GetStyle().*.FramePadding;
-    im.ImGui_PushStyleVarImVec2(im.ImGuiStyleVar_FramePadding, .{ .x = pad.x, .y = @max(1, pad.y * 0.35) });
-    defer im.ImGui_PopStyleVar();
-    return im.ImGui_Checkbox(lbl, v);
-}
-
 /// Accent colours of the "Primary" button style; pair with popPrimary.
 pub fn pushPrimary() void {
     im.ImGui_PushStyleColorImVec4(im.ImGuiCol_Button, col(pal.accent));
@@ -197,29 +189,9 @@ pub fn colWidth() f32 {
     return (160 + 12) * scale();
 }
 
-/// Text that automation can read: an invisible item "text##id" with the text drawn over it (plain TextUnformatted
-/// is not an item, notes K8). `wrap_w` > 0 wraps at that width; `full_width` makes the item exactly `wrap_w` wide
-/// (so widgets can follow on the same line), else it hugs the text.
-pub fn textItem(id: []const u8, text: []const u8, rgb: u32, wrap_w: f32, full_width: bool) void {
-    var buf: [1100]u8 = undefined;
-    const end = text.ptr + text.len;
-    var size = im.ImGui_CalcTextSizeEx(text.ptr, end, false, if (wrap_w > 0) wrap_w else -1);
-    if (full_width) size.x = wrap_w;
-    size.x = @max(1, size.x);
-    size.y = @max(size.y, im.ImGui_GetFontSize());
-    const pos = im.ImGui_GetCursorScreenPos();
-    _ = im.ImGui_InvisibleButton(idLabel(&buf, text, "{s}", .{id}).ptr, size, 0);
-    if (text.len > 0) im.ImDrawList_AddTextImFontPtrEx(im.ImGui_GetWindowDrawList(), im.ImGui_GetFont(), im.ImGui_GetFontSize(), pos, kit.app.colorU32(rgb), text.ptr, end, @max(0, wrap_w), null);
-}
-
-/// Labelled status line ("text##id") wrapped to the available width.
+/// Labelled status line (kit.ui.text "text##id", value = the full text) wrapped to the available width.
 pub fn status(id: []const u8, text: []const u8, rgb: u32) void {
-    statusIn(id, text, rgb, im.ImGui_GetContentRegionAvail().x);
-}
-
-/// `status` occupying exactly `width` (text wrapped to it), so widgets can follow on the same line.
-pub fn statusIn(id: []const u8, text: []const u8, rgb: u32, width: f32) void {
-    textItem(id, text, rgb, @max(50, width), true);
+    kit.ui.text(id, text, rgb, @max(50, im.ImGui_GetContentRegionAvail().x));
 }
 
 /// Fixed-size text of a view's status line: `set` formats into it (cut when too long), `slice` reads it.
@@ -278,114 +250,72 @@ pub fn subNav(id: []const u8, titles: []const [:0]const u8, sel: *usize, height:
     im.ImGui_EndChild();
 }
 
-/// Combo box: a frame-styled button "<current>##<id>" opening a popup of "<item>##<id><i>" selectables.
+/// ImGui combo "##<id>" (automation value = the current item) of "<item>##<id><i>" selectables.
 /// Returns true when the selection changed.
-/// ponytail: local instead of ImGui BeginCombo - it has no test-engine ITEM_INFO hook in this ImGui, so kit
-/// automation cannot find a combo by label; move to the kit if another app needs it.
 pub fn combo(id: []const u8, items: []const [*:0]const u8, cur: *c_int, width: f32) bool {
-    const s = scale();
     var lb: [256]u8 = undefined;
-    var pb: [64]u8 = undefined;
     const idx: usize = @intCast(std.math.clamp(cur.*, 0, @as(c_int, @intCast(items.len)) - 1));
-    const popup = z(&pb, "##{s}Popup", .{id});
-    im.ImGui_PushStyleColorImVec4(im.ImGuiCol_Button, im.ImGui_GetStyle().*.Colors[@intCast(im.ImGuiCol_FrameBg)]);
-    im.ImGui_PushStyleColorImVec4(im.ImGuiCol_ButtonHovered, im.ImGui_GetStyle().*.Colors[@intCast(im.ImGuiCol_FrameBgHovered)]);
-    im.ImGui_PushStyleColorImVec4(im.ImGuiCol_ButtonActive, im.ImGui_GetStyle().*.Colors[@intCast(im.ImGuiCol_FrameBgActive)]);
-    im.ImGui_PushStyleVarImVec2(im.ImGuiStyleVar_ButtonTextAlign, .{ .x = 0, .y = 0.5 });
-    const pos = im.ImGui_GetCursorScreenPos();
-    if (im.ImGui_ButtonEx(z(&lb, "{s}##{s}", .{ std.mem.span(items[idx]), id }).ptr, .{ .x = width, .y = 0 })) _ = im.ImGui_OpenPopup(popup.ptr, 0);
-    im.ImGui_PopStyleVar();
-    im.ImGui_PopStyleColorEx(3);
-    const h = im.ImGui_GetFrameHeight();
-    const arrow = kit.ui.glyph(0xE70D); // ChevronDown
-    im.ImDrawList_AddTextImFontPtr(im.ImGui_GetWindowDrawList(), im.ImGui_GetFont(), im.ImGui_GetFontSize() * 0.7, .{ .x = pos.x + width - h * 0.75, .y = pos.y + h * 0.3 }, kit.app.colorU32(pal.muted), &arrow);
+    im.ImGui_SetNextItemWidth(width);
+    if (!im.ImGui_BeginCombo(z(&lb, "##{s}", .{id}).ptr, items[idx], 0)) return false;
+    defer im.ImGui_EndCombo();
     var changed = false;
-    im.ImGui_SetNextWindowPos(.{ .x = pos.x, .y = pos.y + h }, 0);
-    im.ImGui_SetNextWindowSizeConstraints(.{ .x = width, .y = 0 }, .{ .x = 10000 * s, .y = 10000 * s }, null, null);
-    if (im.ImGui_BeginPopup(popup.ptr, 0)) {
-        for (items, 0..) |it, i| {
-            if (im.ImGui_SelectableEx(z(&lb, "{s}##{s}{d}", .{ std.mem.span(it), id, i }).ptr, i == idx, 0, .{ .x = 0, .y = 0 })) {
-                changed = cur.* != @as(c_int, @intCast(i));
-                cur.* = @intCast(i);
-            }
+    for (items, 0..) |it, i| {
+        if (im.ImGui_SelectableEx(z(&lb, "{s}##{s}{d}", .{ std.mem.span(it), id, i }).ptr, i == idx, 0, .{ .x = 0, .y = 0 })) {
+            changed = cur.* != @as(c_int, @intCast(i));
+            cur.* = @intCast(i);
         }
-        im.ImGui_EndPopup();
+        if (i == idx) im.ImGui_SetItemDefaultFocus();
     }
     return changed;
 }
 
-/// Tab strip ("Title##id" per tab, underline on the selected one).
-/// ponytail: local instead of ImGui TabBar - Dear ImGui's TabItemEx has no test-engine ITEM_INFO hook, so
-/// kit automation cannot see tab labels; move to the kit if another app needs it.
-pub fn tabs(titles: []const [:0]const u8, ids: []const []const u8, cur: *usize) void {
-    const s = scale();
-    const dl = im.ImGui_GetWindowDrawList();
-    const pad = 12 * s;
-    const h = im.ImGui_GetFontSize() + 12 * s;
-    const start = im.ImGui_GetCursorScreenPos();
-    im.ImGui_PushStyleColorImVec4(im.ImGuiCol_Header, col(pal.surface));
-    im.ImGui_PushStyleColorImVec4(im.ImGuiCol_HeaderHovered, col(pal.accent_soft));
-    im.ImGui_PushStyleColorImVec4(im.ImGuiCol_HeaderActive, col(pal.accent_soft));
-    im.ImGui_PushStyleVarImVec2(im.ImGuiStyleVar_SelectableTextAlign, .{ .x = 0.5, .y = 0.5 });
-    for (titles, ids, 0..) |t, id, i| {
-        if (i > 0) im.ImGui_SameLineEx(0, 2 * s);
-        var lb: [96]u8 = undefined;
-        const tw = im.ImGui_CalcTextSize(t.ptr).x + pad * 2;
-        const pos = im.ImGui_GetCursorScreenPos();
-        if (im.ImGui_SelectableEx(z(&lb, "{s}##{s}", .{ t, id }).ptr, cur.* == i, 0, .{ .x = tw, .y = h })) cur.* = i;
-        if (cur.* == i) im.ImDrawList_AddRectFilled(dl, .{ .x = pos.x, .y = pos.y + h - 2 * s }, .{ .x = pos.x + tw, .y = pos.y + h }, kit.app.colorU32(pal.accent));
-    }
-    im.ImGui_PopStyleVar();
-    im.ImGui_PopStyleColorEx(3);
-    const y = start.y + h;
-    im.ImDrawList_AddLine(dl, .{ .x = start.x, .y = y }, .{ .x = start.x + im.ImGui_GetContentRegionAvail().x, .y = y }, kit.app.colorU32(pal.line));
-    im.ImGui_Dummy(.{ .x = 0, .y = 4 * s });
-}
-
 // ---------------------------------------------------------------- modal dialog (Dialog.cs) as a state machine
 
-pub const Answer = struct { tag: u8, button: usize };
+pub const Answer = struct { tag: u32, button: usize };
 
-/// One pending message box per page. `show` arms it (from anywhere in the frame); `draw` must be called
-/// once per frame from a fixed place of the page and returns the answer once.
+/// One pending message box (Dialog.cs) on kit.ui.messageBox: `show` arms it (from anywhere in the frame);
+/// `draw` must be called once per frame from a fixed place of the page and returns the answer once.
+/// buttons[0] = default (Enter), the last one = Esc. Automation: "<text>##msgText", "<label>##msgButton<i>".
 pub const Dialog = struct {
     want_open: bool = false,
-    title_buf: [96:0]u8 = @splat(0),
+    title_buf: [200:0]u8 = @splat(0),
     kind: kit.ui.MsgKind = .info,
-    text_buf: [1024]u8 = undefined,
+    text_buf: [1200]u8 = undefined,
     text_len: usize = 0,
-    buttons: [2][*:0]const u8 = .{ "OK", "Cancel" },
-    n_buttons: usize = 1,
-    tag: u8 = 0,
+    buttons: [3][100:0]u8 = @splat(@splat(0)),
+    n_buttons: usize = 0,
+    tag: u32 = 0,
 
-    /// title = window title (also the automation window name); buttons[0] = default action.
-    pub fn show(d: *Dialog, tag: u8, ttl: []const u8, kind: kit.ui.MsgKind, buttons: []const [*:0]const u8, comptime fmt: []const u8, args: anytype) void {
-        _ = std.mem.printSentinel(&d.title_buf, "{s}##dlg", .{ttl}, 0) catch {};
+    /// `ttl` = window title; the texts are copied (callers may pass stack buffers).
+    pub fn show(d: *Dialog, tag: u32, ttl: []const u8, kind: kit.ui.MsgKind, buttons: []const []const u8, comptime fmt: []const u8, args: anytype) void {
+        // "###dlg<addr>": the popup id stays fixed per Dialog whatever the title
+        _ = std.mem.printSentinel(&d.title_buf, "{s}###dlg{x}", .{ ttl[0..@min(ttl.len, 160)], @intFromPtr(d) }, 0) catch {};
         const t: []const u8 = std.mem.print(&d.text_buf, fmt, args) catch &d.text_buf;
         d.text_len = t.len;
         d.kind = kind;
-        for (buttons, 0..) |b, i| d.buttons[i] = b;
-        d.n_buttons = buttons.len;
+        d.n_buttons = @min(buttons.len, d.buttons.len);
+        for (buttons[0..d.n_buttons], 0..) |b, i| _ = std.mem.printSentinel(&d.buttons[i], "{s}", .{b[0..@min(b.len, 99)]}, 0) catch {};
         d.tag = tag;
         d.want_open = true;
     }
 
     /// ToolsUi.Confirm: the title doubles as the action button.
-    pub fn confirm(d: *Dialog, tag: u8, ttl: [*:0]const u8, comptime fmt: []const u8, args: anytype) void {
-        d.show(tag, std.mem.span(ttl), .warning, &.{ ttl, "Cancel" }, fmt, args);
+    pub fn confirm(d: *Dialog, tag: u32, ttl: []const u8, comptime fmt: []const u8, args: anytype) void {
+        d.show(tag, ttl, .warning, &.{ ttl, "Cancel" }, fmt, args);
     }
 
-    pub fn info(d: *Dialog, tag: u8, ttl: []const u8, comptime fmt: []const u8, args: anytype) void {
+    pub fn info(d: *Dialog, tag: u32, ttl: []const u8, comptime fmt: []const u8, args: anytype) void {
         d.show(tag, ttl, .info, &.{"OK"}, fmt, args);
     }
 
     pub fn draw(d: *Dialog) ?Answer {
-        const id: [*:0]const u8 = &d.title_buf;
         if (d.want_open) {
-            kit.ui.openMessage(id);
+            kit.ui.openMessage(&d.title_buf);
             d.want_open = false;
         }
-        const b = kit.ui.messageBox(id, d.kind, d.text_buf[0..d.text_len], d.buttons[0..d.n_buttons]) orelse return null;
+        var ptrs: [3][*:0]const u8 = undefined;
+        for (d.buttons[0..d.n_buttons], 0..) |*b, i| ptrs[i] = b;
+        const b = kit.ui.messageBoxEx(&d.title_buf, d.kind, d.text_buf[0..d.text_len], ptrs[0..d.n_buttons], .{ .width = 480 }) orelse return null;
         return .{ .tag = d.tag, .button = b };
     }
 };
@@ -596,11 +526,4 @@ pub fn jobProgress(job: *kit.jobs.Job) @import("../core/common.zig").Progress(us
             j.setDone(v);
         }
     }.f };
-}
-
-/// UI: true once a started job finished; joins it (isFinished alone stays true after the join).
-pub fn jobDone(job: *kit.jobs.Job) bool {
-    if (job.thread == null or !job.isFinished()) return false;
-    job.join();
-    return true;
 }

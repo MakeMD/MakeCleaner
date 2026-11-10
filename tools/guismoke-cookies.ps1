@@ -38,10 +38,10 @@ make(sys.argv[2], "moz_cookies", "host", [".example.com", ".spam.org"])
     $realBrowser = @(Get-Process chrome, firefox -ErrorAction SilentlyContinue).Count -gt 0
 
     $app = Start-McApp $sb -Screen $Screen
-    $null = Wait-McLabel $app '*applications detected##status'
+    $null = Wait-AutoLabel $app '*applications detected##status'
     Invoke-AutoClick $app 'Options'
     Invoke-AutoClick $app 'Cookies##optionsNav3'
-    $scan = (Wait-McLabel $app '*domains with cookies*##cookieStatus').label
+    $scan = (Wait-AutoLabel $app '*domains with cookies*##cookieStatus').label
     $all = (Rows 'ca') -join ';'
     $keep = (Rows 'ck') -join ';'
     Write-Host "options: $scan | on computer: $all | keep: $keep"
@@ -57,7 +57,7 @@ make(sys.argv[2], "moz_cookies", "host", [".example.com", ".spam.org"])
 
     Invoke-AutoClick $app 'Cleaner'
     Invoke-AutoClick $app 'Analyze##analyze'
-    $a = (Wait-McLabel $app 'Analysis complete*##status').label
+    $a = (Wait-AutoLabel $app 'Analysis complete*##status').label
     Write-Host "analyze: $a"
     $okLists = ($all -eq 'ads.tracker.net;spam.org;tracker.net') -and ($keep -eq 'example.com') -and
                ($keep2 -eq 'example.com;spam.org') -and ($all2 -eq 'ads.tracker.net;tracker.net') -and ($a -like '*, 2 browser entries*')
@@ -67,7 +67,7 @@ make(sys.argv[2], "moz_cookies", "host", [".example.com", ".spam.org"])
         $okClean = $true
     } else {
         Invoke-AutoClick $app 'Run Cleaner##clean'
-        $c = (Wait-McLabel $app 'Cleaning complete*##status').label
+        $c = (Wait-AutoLabel $app 'Cleaning complete*##status').label
         Write-Host "clean: $c"
         $chromeLeft = Hosts (Join-Path $chrome 'Network\Cookies') 'cookies' 'host_key'
         $firefoxLeft = Hosts (Join-Path $firefox 'cookies.sqlite') 'moz_cookies' 'host'

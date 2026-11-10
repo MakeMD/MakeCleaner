@@ -14,7 +14,7 @@ try {
     Set-McIni $sb
     $sw = [Diagnostics.Stopwatch]::StartNew()
     $app = Start-McApp $sb -Screen $Screen
-    $d = (Wait-McLabel $app '*applications detected##status').label
+    $d = (Wait-AutoLabel $app '*applications detected##status').label
     Write-Host ("detect: $d in {0:N1}s" -f $sw.Elapsed.TotalSeconds)
     Invoke-AutoClick $app 'Applications##tabApps'
     $null = Invoke-AutoFrames $app 3
@@ -35,7 +35,7 @@ try {
     }
     Write-Host "ticked: $ticked"
     Invoke-AutoClick $app 'Analyze##analyze'
-    $a = (Wait-McLabel $app 'Analysis complete*##status' 120000).label
+    $a = (Wait-AutoLabel $app 'Analysis complete*##status' 120000).label
     Write-Host "analyze: $a"
     Save-McShot $app $Shot
     $left = @(Get-ChildItem $sb.Temp -File).Count

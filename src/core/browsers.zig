@@ -56,15 +56,15 @@ pub const Browser = struct {
 
     /// Browser.Running: PIDs of running processes with this name (GetProcessesByName: ignore case, no ".exe").
     pub fn running(b: *const Browser, gpa: Allocator) ![]u32 {
-        const snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+        const snap = w.CreateToolhelp32Snapshot(w.TH32CS_SNAPPROCESS, 0);
         if (snap == w.INVALID_HANDLE_VALUE) return error.Unexpected;
         defer _ = w.CloseHandle(snap);
         var out: std.ArrayList(u32) = .empty;
         errdefer out.deinit(gpa);
-        var pe: PROCESSENTRY32W = undefined;
-        pe.dwSize = @sizeOf(PROCESSENTRY32W);
-        var ok = Process32FirstW(snap, &pe);
-        while (ok != 0) : (ok = Process32NextW(snap, &pe)) {
+        var pe: w.PROCESSENTRY32W = undefined;
+        pe.dwSize = @sizeOf(w.PROCESSENTRY32W);
+        var ok = w.Process32FirstW(snap, &pe);
+        while (ok != 0) : (ok = w.Process32NextW(snap, &pe)) {
             var buf: [pe.szExeFile.len * 3]u8 = undefined;
             const exe = buf[0..std.unicode.wtf16LeToWtf8(&buf, std.mem.sliceTo(&pe.szExeFile, 0))];
             const name = if (std.ascii.endsWithIgnoreCase(exe, ".exe")) exe[0 .. exe.len - 4] else exe;
@@ -710,23 +710,3 @@ fn prefsRemove(a: Allocator, io: Io, file: []const u8, apply: bool, pref: []cons
     if (!removed) return false;
     return !apply or replaceFile(io, file, kept.items);
 }
-
-// ---------------------------------------------------------------- files / processes
-
-const TH32CS_SNAPPROCESS = 0x2;
-const PROCESSENTRY32W = extern struct {
-    dwSize: u32,
-    cntUsage: u32,
-    th32ProcessID: u32,
-    th32DefaultHeapID: usize,
-    th32ModuleID: u32,
-    cntThreads: u32,
-    th32ParentProcessID: u32,
-    pcPriClassBase: i32,
-    dwFlags: u32,
-    szExeFile: [260]u16,
-};
-// tlhelp32.h is not in kit.w.
-extern "kernel32" fn CreateToolhelp32Snapshot(flags: u32, pid: u32) callconv(.winapi) w.HANDLE;
-extern "kernel32" fn Process32FirstW(snap: w.HANDLE, pe: *PROCESSENTRY32W) callconv(.winapi) c_int;
-extern "kernel32" fn Process32NextW(snap: w.HANDLE, pe: *PROCESSENTRY32W) callconv(.winapi) c_int;

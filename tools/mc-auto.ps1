@@ -3,7 +3,8 @@
 # never real input. Every run works on a sandbox copy: %TEMP%\makecleaner-test-<tag>-<rand>\app (+ portable.dat)
 # with TEMP/TMP/APPDATA/LOCALAPPDATA pointed at sandbox fixture folders. Pure ASCII (PS 5.1).
 . (Join-Path $PSScriptRoot '..\..\MakeKit\tools\imgui-auto.ps1')
-Add-Type -AssemblyName System.Drawing
+# scans and analyses take longer than the kit's 5 s default
+$PSDefaultParameterValues['Wait-AutoLabel:TimeoutMs'] = 30000
 
 # Copies BinDir (exe + rules + notices, no pdb/ini/log/portable.dat) into a fresh sandbox; returns its paths.
 function New-McSandbox {
@@ -75,27 +76,6 @@ function Invoke-McHeadless {
 
 function Get-McItems($app, [string]$like = '*') { @(Get-AutoItems $app | Where-Object { $_.label -like $like }) }
 
-# Polls until an item label matches -like $like (e.g. 'Analysis complete*##status'); returns the item.
-function Wait-McLabel {
-    param([Parameter(Mandatory = $true)]$App, [Parameter(Mandatory = $true)][string]$Like, [int]$TimeoutMs = 30000)
-    $deadline = (Get-Date).AddMilliseconds($TimeoutMs)
-    $last = ''
-    while ($true) {
-        $hit = @(Get-McItems $App $Like)
-        if ($hit.Count -gt 0) { return $hit[0] }
-        if ((Get-Date) -gt $deadline) { throw "timeout waiting for '$Like'" }
-        $null = Invoke-AutoFrames $App 2
-        Start-Sleep -Milliseconds 100
-    }
-}
-
-# Text of a status item 'text##id' (empty string when the label is just '##id').
-function Get-McText($app, [string]$id) {
-    $it = @(Get-McItems $app "*##$id")
-    if ($it.Count -eq 0) { return $null }
-    $it[0].label.Substring(0, $it[0].label.Length - $id.Length - 2)
-}
-
 # Replaces the text of an input: click it, select all, delete, type, Tab out.
 function Set-McText($app, [string]$label, [string]$text) {
     Invoke-AutoClick $app $label; Invoke-AutoKey $app 'ctrl+A'; Invoke-AutoKey $app 'Delete'
@@ -106,14 +86,8 @@ function Set-McText($app, [string]$label, [string]$text) {
 
 function Save-McShot($app, [string]$png) {
     $null = Invoke-AutoFrames $app 3
-    $png = [IO.Path]::GetFullPath($png)
-    New-Item -ItemType Directory -Force (Split-Path $png) | Out-Null
-    $bmp = [IO.Path]::ChangeExtension($png, '.bmp')
-    $null = Save-AutoScreenshot $app $bmp
-    $img = [System.Drawing.Image]::FromFile($bmp)
-    try { $img.Save($png, [System.Drawing.Imaging.ImageFormat]::Png) } finally { $img.Dispose() }
-    Remove-Item $bmp
-    Write-Host "screenshot: $png"
+    New-Item -ItemType Directory -Force (Split-Path ([IO.Path]::GetFullPath($png))) | Out-Null
+    Write-Host ("screenshot: " + (Save-AutoScreenshot $app $png -Png))
 }
 
 # WM_CLOSE (the real close path: saves the Cleaner ticks); kills by PID if it hangs. Returns the exit code.

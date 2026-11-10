@@ -179,7 +179,7 @@ pub const View = struct {
 
     pub fn draw(v: *View, ctx: *Ctx) void {
         const s = ui.scale();
-        if (ui.jobDone(&v.job)) {
+        if (v.job.takeFinished()) {
             var eb: [256]u8 = undefined;
             if (v.job.cancelled()) {
                 v.progress.set("Cancelled. Temporary wipe files removed.", .{});
@@ -227,7 +227,7 @@ pub const View = struct {
         if (im.ImGui_BeginChild("##drives", .{ .x = 0, .y = @max(60 * s, avail.y - bottom_h) }, im.ImGuiChildFlags_Borders, 0)) {
             for (v.drives.items, 0..) |*d, i| {
                 var lb: [256]u8 = undefined;
-                _ = ui.check(ui.idLabel(&lb, d.text[0..d.text_len], "drive{d}", .{i}).ptr, &d.on);
+                _ = kit.ui.checkbox(ui.idLabel(&lb, d.text[0..d.text_len], "drive{d}", .{i}).ptr, &d.on);
             }
         }
         im.ImGui_EndChild();
@@ -244,10 +244,13 @@ pub const View = struct {
             break;
         };
         im.ImGui_SetCursorPosY(im.ImGui_GetCursorPosY() + 4 * s);
-        ui.statusIn("wipeWarning", wb[0..ww.end], ui.pal.danger, im.ImGui_GetContentRegionAvail().x);
+        ui.status("wipeWarning", wb[0..ww.end], ui.pal.danger);
         const btns = 90 * s + 8 * s + 90 * s;
-        ui.statusIn("wipeProgress", v.progress.slice(), ui.pal.text, im.ImGui_GetContentRegionAvail().x - btns - 8 * s);
-        im.ImGui_SameLineEx(0, 8 * s);
+        const x0 = im.ImGui_GetCursorPosX();
+        const row_w = im.ImGui_GetContentRegionAvail().x;
+        kit.ui.text("wipeProgress", v.progress.slice(), ui.pal.text, @max(50, row_w - btns - 8 * s));
+        im.ImGui_SameLine();
+        im.ImGui_SetCursorPosX(x0 + @max(50 + 8 * s, row_w - btns)); // the buttons stay right-aligned
         if (ui.primary("Wipe##wipe", !busy)) v.run();
         im.ImGui_SameLineEx(0, 8 * s);
         if (ui.button("Cancel##wipeCancel", busy)) v.job.cancel();

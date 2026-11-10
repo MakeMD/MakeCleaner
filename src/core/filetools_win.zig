@@ -27,13 +27,6 @@ pub fn fullPath(gpa: std.mem.Allocator, path: []const u8) ![]u8 {
     return std.unicode.wtf16LeToWtf8Alloc(gpa, s);
 }
 
-/// File attributes of `path`, null when it does not exist / is inaccessible.
-pub fn attributes(path: []const u8) ?u32 {
-    const p = winPath(path) catch return null;
-    const a = w.GetFileAttributesW(p.span().ptr);
-    return if (a == w.INVALID_FILE_ATTRIBUTES) null else a;
-}
-
 /// A raw, unbuffered Win32 file handle: `open` = write, no sharing (FileShare.None); `openRead` = read.
 pub const Handle = struct {
     h: w.HANDLE,

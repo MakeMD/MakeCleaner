@@ -108,20 +108,10 @@ pub fn stat(path: []const u8) ?Entry {
     return .{ .path = path, .attrs = d.dwFileAttributes, .size = @as(u64, d.nFileSizeHigh) << 32 | d.nFileSizeLow, .mtime = fromFileTime(d.ftLastWriteTime) };
 }
 
-/// Path.Exists: a file or a folder.
-pub fn exists(path: []const u8) bool {
-    return stat(path) != null;
-}
-
-/// Directory.Exists.
-pub fn isDir(path: []const u8) bool {
-    return if (stat(path)) |s| s.isDir() else false;
-}
-
-/// File.Exists.
-pub fn isFile(path: []const u8) bool {
-    return if (stat(path)) |s| !s.isDir() else false;
-}
+/// Path.Exists / Directory.Exists / File.Exists (kit.win: long paths get the `\\?\` prefix, like `toW`).
+pub const exists = kit.win.exists;
+pub const isDir = kit.win.isDir;
+pub const isFile = kit.win.isFile;
 
 /// File.SetAttributes.
 pub fn setAttrs(path: []const u8, attrs: u32) !void {

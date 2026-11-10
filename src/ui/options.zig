@@ -98,7 +98,7 @@ fn settingsPage(ctx: *Ctx) void {
     for (age_options) |o| {
         im.ImGui_Dummy(.{ .x = 0, .y = 6 * s });
         var on = ctx.settings.getBool(o.key, false);
-        if (ui.check(o.text, &on)) {
+        if (kit.ui.checkbox(o.text, &on)) {
             ctx.settings.set(o.key, on) catch {};
             save(ctx);
         }
@@ -169,7 +169,7 @@ const Schedule = struct {
 
     fn draw(p: *Schedule, ctx: *Ctx) void {
         const s = ui.scale();
-        if (ui.jobDone(&p.job)) {
+        if (p.job.takeFinished()) {
             var sb: [256]u8 = undefined;
             p.status.set("{s}", .{p.job.status(&sb)});
         }
@@ -185,7 +185,7 @@ const Schedule = struct {
         _ = p.at.input("##schedAt", 150 * s);
         im.ImGui_EndDisabled();
         im.ImGui_SameLineEx(0, 8 * s);
-        _ = ui.check("Shut down the PC afterwards##schedShutdown", &p.shutdown);
+        _ = kit.ui.checkbox("Shut down the PC afterwards##schedShutdown", &p.shutdown);
         im.ImGui_Dummy(.{ .x = 0, .y = 4 * s });
         if (ui.button("Create task##schedCreate", !busy)) p.createTask();
         im.ImGui_SameLineEx(0, 8 * s);

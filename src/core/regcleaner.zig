@@ -739,16 +739,7 @@ pub fn exists(issue: *const RegIssue) bool {
     const k = (reg.open(issue.key_path, false) catch return true) orelse return false;
     defer k.close();
     const v = issue.value_name orelse return true;
-    return hasValue(k, v);
-}
-
-/// Value present (names are case-insensitive, like GetValueNames().Contains(OrdinalIgnoreCase)); unknown = true.
-fn hasValue(k: win.Key, name: []const u8) bool {
-    var stack: [1024]u8 = undefined;
-    var bfa: std.heap.BufferFirstAllocator = .init(&stack, std.heap.page_allocator);
-    const n = win.toW(bfa.allocator(), name) catch return true;
-    defer bfa.allocator().free(n);
-    return w.RegQueryValueExW(k.h, n.ptr, null, null, null, null) != w.ERROR_FILE_NOT_FOUND;
+    return k.hasValue(v) catch true; // unknown = still there
 }
 
 /// RegFix.DefaultBackupName: "MakeCleaner_registry_yyyyMMdd_HHmmss.reg". Caller frees.
@@ -771,7 +762,7 @@ pub fn writeBackup(gpa: Allocator, io: Io, issues: []const RegIssue, path: []con
         defer k.close();
         const name = try a.print("{f}", .{KeyName{ .path = i.key_path }});
         if (i.value_name) |v| {
-            if (!hasValue(k, v)) continue;
+            if (!(k.hasValue(v) catch true)) continue;
             try out.print(a, "\r\n[{s}]\r\n", .{name});
             try valueLine(a, &out, k, v);
             try out.appendSlice(a, "\r\n");

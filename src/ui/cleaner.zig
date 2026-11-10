@@ -118,7 +118,7 @@ pub const Page = struct {
     lines: []Line = &.{},
     selected: ?usize = null,
     clean_enabled: bool = false,
-    dialog: g.Dialog = .{},
+    dialog: ui.Dialog = .{},
     pending_warn: ?*Node = null,
 
     pub fn init(ctx: *Ctx) !Page {
@@ -192,8 +192,8 @@ pub const Page = struct {
             p.lists_started = true; // Page sits at its final address now: safe to hand it to a worker
             p.lists_job.start(p, listsWorker) catch |e| p.say("Detecting applications failed: {t}", .{e});
         }
-        if (ui.jobDone(&p.lists_job)) p.finishLists(ctx);
-        if (ui.jobDone(&p.work)) p.finishWork(ctx);
+        if (p.lists_job.takeFinished()) p.finishLists(ctx);
+        if (p.work.takeFinished()) p.finishWork(ctx);
         if (p.work.isRunning() and p.phase == .analyzing) {
             p.bar_done = p.work.done.load(.acquire);
             p.bar_total = p.work.total.load(.acquire);
@@ -256,7 +256,7 @@ pub const Page = struct {
                     if (want and n.warning != null and !n.on) {
                         // the box stays off until the user confirms (CheckNode.Confirm)
                         p.pending_warn = n;
-                        p.dialog.show(tag_warn, .warning, n.name, n.warning.?, &.{ "Turn on", "Cancel" });
+                        p.dialog.show(tag_warn, n.name, .warning, &.{ "Turn on", "Cancel" }, "{s}", .{n.warning.?});
                     } else n.on = want;
                 }
                 if (n.warning) |w| im.ImGui_SetItemTooltipUnformatted(w.ptr);
@@ -307,7 +307,7 @@ pub const Page = struct {
             const wrap = @min(360 * s, table_w - 20 * s);
             const ts = im.ImGui_CalcTextSizeEx(hint_text, null, false, wrap);
             im.ImGui_SetCursorScreenPos(.{ .x = top.x + (table_w - ts.x) / 2, .y = top.y + (table_h - ts.y) / 2 });
-            ui.textItem("hint", hint_text, pal.muted, wrap, false);
+            kit.ui.text("hint", hint_text, pal.muted, wrap);
         }
         im.ImGui_SetCursorScreenPos(.{ .x = top.x, .y = top.y + table_h + 12 * s });
 
@@ -471,7 +471,7 @@ pub const Page = struct {
                 } else {
                     var buf: [256]u8 = undefined;
                     const msg: []const u8 = std.mem.print(&buf, "{s} did not close (maybe an unsaved dialog). Skipping it.", .{b.name}) catch "The browser did not close. Skipping it.";
-                    p.dialog.show(tag_not_closed, .info, b.name, msg, &.{"OK"});
+                    p.dialog.show(tag_not_closed, b.name, .info, &.{"OK"}, "{s}", .{msg});
                 }
             },
             .cleaning => {
@@ -505,7 +505,7 @@ pub const Page = struct {
             const text: []const u8 = std.mem.print(&tbuf, "{s} is running, so its files are locked. Close it now, or leave it out of this clean?", .{b.name}) catch b.name;
             var cbuf: [80]u8 = undefined;
             const close: []const u8 = std.mem.print(&cbuf, "Close {s}", .{b.name}) catch "Close";
-            p.dialog.show(tag_browser, .question, b.name, text, &.{ close, "Skip", "Cancel" });
+            p.dialog.show(tag_browser, b.name, .question, &.{ close, "Skip", "Cancel" }, "{s}", .{text});
             return;
         }
         p.startClean();
@@ -549,15 +549,15 @@ pub const Page = struct {
         p.close_ok = browsers.closeGracefully(pids, 10_000);
     }
 
-    fn answer(p: *Page, ctx: *Ctx, a: g.Answer) void {
+    fn answer(p: *Page, ctx: *Ctx, a: ui.Answer) void {
         switch (a.tag) {
             tag_warn => {
-                if (a.index == 0) if (p.pending_warn) |n| {
+                if (a.button == 0) if (p.pending_warn) |n| {
                     n.on = true;
                 };
                 p.pending_warn = null;
             },
-            tag_browser => switch (a.index) {
+            tag_browser => switch (a.button) {
                 0 => {
                     p.phase = .closing;
                     p.say("Closing {s}...", .{p.running[p.ask_idx].name});

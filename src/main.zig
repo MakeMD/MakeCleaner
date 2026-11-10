@@ -7,7 +7,7 @@ const cookies = @import("core/cookies.zig");
 const schedule = @import("core/schedule.zig");
 const ctx_mod = @import("ui/ctx.zig");
 const Ctx = ctx_mod.Ctx;
-const g1 = @import("ui/g1_common.zig");
+const tools_ui = @import("ui/tools_ui.zig");
 const ui_cleaner = @import("ui/cleaner.zig");
 const ui_registry = @import("ui/registry.zig");
 const ui_tools = @import("ui/tools.zig");
@@ -66,7 +66,7 @@ const State = struct {
     registry: ui_registry.Page = undefined,
     tools: ui_tools.Page = undefined,
     options: ui_options.Page = undefined,
-    about: g1.Dialog = .{},
+    about: tools_ui.Dialog = .{},
 };
 
 /// MainWindow.Closing: the Cleaner ticks are saved on close.
@@ -144,7 +144,7 @@ fn frame(app: *App) void {
     // About link on the right -> themed info dialog
     const about_w = im.ImGui_CalcTextSize("About").x;
     im.ImGui_SetCursorScreenPos(.{ .x = pos.x + size.x - about_w - 12 * sc, .y = top + 4 * sc });
-    if (im.ImGui_TextLink("About##about")) s.about.show(0, .info, "About MakeCleaner", ctx_mod.about_text, &.{"OK"});
+    if (im.ImGui_TextLink("About##about")) s.about.info(0, "About MakeCleaner", "{s}", .{ctx_mod.about_text});
     _ = s.about.draw();
 }
 

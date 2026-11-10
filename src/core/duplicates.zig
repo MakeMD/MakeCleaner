@@ -154,8 +154,7 @@ pub const scan = struct {
         var fd: w.WIN32_FIND_DATAW = undefined;
         for (roots) |r| {
             const expanded = try kit_win.expandEnv(arena, std.mem.trim(u8, r, &std.ascii.whitespace));
-            const attrs = fw.attributes(expanded) orelse continue; // Directory.Exists
-            if (attrs & w.FILE_ATTRIBUTE_DIRECTORY == 0) continue;
+            if (!kit_win.isDir(expanded)) continue; // Directory.Exists
             var queue: std.ArrayList([]const u8) = .empty;
             try queue.append(arena, try fw.fullPath(arena, expanded));
             var qi: usize = 0;

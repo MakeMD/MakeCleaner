@@ -29,7 +29,7 @@ pub const Fix = struct {
     batch: std.ArrayList(usize) = .empty,
     all: bool = false, // the running batch is "Fix All Selected"
     close_pending: bool = false,
-    confirm: g.Dialog = .{},
+    confirm: ui.Dialog = .{},
 
     pub fn init(gpa: Allocator, io: std.Io) Fix {
         return .{ .gpa = gpa, .io = io };
@@ -78,7 +78,7 @@ pub const Fix = struct {
             _ = im.ImGui_OpenPopup(title, 0);
             f.want_open = false;
         }
-        if (ui.jobDone(&f.job)) f.finishApply();
+        if (f.job.takeFinished()) f.finishApply();
         const busy = f.job.isRunning();
 
         const vp = im.ImGui_GetMainViewport();
@@ -109,7 +109,7 @@ pub const Fix = struct {
         const cy = im.ImGui_GetCursorPosY();
         im.ImGui_SetCursorPosY(cy + (32 * s - im.ImGui_GetFontSize()) / 2);
         im.ImGui_PushFontFloat(g.boldFont(), 0);
-        ui.textItem("regcounter", counter, pal.text, 0, false);
+        kit.ui.text("regcounter", counter, pal.text, 0);
         im.ImGui_PopFont();
         im.ImGui_SameLine();
         im.ImGui_SetCursorPosY(cy);
@@ -124,7 +124,7 @@ pub const Fix = struct {
         const details: []const u8 = std.mem.print(&dbuf, "Problem: {s}\nData: {s}\nRegistry key: {s}\n\nSolution: delete the registry {s}.", .{
             x.problem, x.data, target orelse x.key_path, if (x.value_name == null) "key" else "value",
         }) catch "";
-        ui.textItem("regdetails", details, pal.text, im.ImGui_GetContentRegionAvail().x, false);
+        kit.ui.text("regdetails", details, pal.text, im.ImGui_GetContentRegionAvail().x);
         im.ImGui_Dummy(.{ .x = 0, .y = 6 * s });
 
         // Fix Issue / Fix All Selected / Close
@@ -137,12 +137,12 @@ pub const Fix = struct {
             for (f.fixed) |d| left += @intFromBool(!d);
             var mbuf: [160]u8 = undefined;
             const msg: []const u8 = std.mem.print(&mbuf, "Fix all {d} remaining issues? The backup you just saved can undo this.", .{left}) catch "Fix all remaining issues?";
-            f.confirm.show(0, .warning, "Fix All Selected", msg, &.{ "Fix all", "Cancel" });
+            f.confirm.show(0, "Fix All Selected", .warning, &.{ "Fix all", "Cancel" }, "{s}", .{msg});
         }
         im.ImGui_SameLineEx(0, 8 * s);
         if (g.button("Close##regclose", !busy, false)) return f.close(true);
 
-        if (f.confirm.draw()) |a| if (a.index == 0) f.startApply(true);
+        if (f.confirm.draw()) |a| if (a.button == 0) f.startApply(true);
         return false;
     }
 

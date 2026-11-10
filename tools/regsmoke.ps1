@@ -14,7 +14,7 @@ try {
     Invoke-AutoClick $app 'Registry'
     $null = Wait-AutoItem $app 'Scan for Issues##regscan' 5000
     Invoke-AutoClick $app 'Scan for Issues##regscan'
-    $s = (Wait-McLabel $app 'Scan complete*##regstatus' 120000).label
+    $s = (Wait-AutoLabel $app 'Scan complete*##regstatus' 120000).label
     Write-Host "scan: $s"
     Save-McShot $app $Shot
     $code = Close-McApp $app

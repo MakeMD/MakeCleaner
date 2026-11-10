@@ -24,7 +24,7 @@ try {
     Invoke-AutoClick $app 'Tools'
     Invoke-AutoClick $app 'Uninstall##toolsNav0'
     $res = [ordered]@{ Uninstall = (Rows '##u\d+p$') }
-    Write-Host ("uninstall count line: " + (Get-McText $app 'uninstallCount'))
+    Write-Host ("uninstall count line: " + (Get-AutoText $app '##uninstallCount'))
     Save-McShot $app (Join-Path $ShotDir 'makecleaner-uninstall.png')
     Invoke-AutoClick $app 'Startup##toolsNav1'
     $k = 0

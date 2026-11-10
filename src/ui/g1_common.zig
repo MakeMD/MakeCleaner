@@ -1,6 +1,5 @@
-//! MC-G1 shared GUI helpers: the themed Dialog (legacy Dialog.cs), the progress strip of Cleaner/Registry,
-//! buttons (Theme.xaml: flat, min 110x32, Primary = accent) and the settings snapshot handed to workers.
-//! Text items, N0, colours and job polling live in tools_ui.zig.
+//! MC-G1 shared GUI helpers: the progress strip of Cleaner/Registry, buttons (Theme.xaml: flat, min 110x32,
+//! Primary = accent) and the settings snapshot handed to workers. The Dialog, N0 and colours live in tools_ui.zig.
 const std = @import("std");
 const kit = @import("kit");
 const settings_mod = @import("../core/settings.zig");
@@ -65,7 +64,7 @@ pub fn progressStrip(panel_id: [*:0]const u8, status: []const u8, status_id: []c
         const avail = im.ImGui_GetContentRegionAvail().x;
         const y0 = im.ImGui_GetCursorPosY();
         im.ImGui_PushFontFloat(boldFont(), 0);
-        ui.textItem(status_id, status, pal.text, @max(40, avail - bw - 12 * s), false);
+        kit.ui.text(status_id, status, pal.text, @max(40, avail - bw - 12 * s));
         im.ImGui_PopFont();
         const y1 = im.ImGui_GetCursorPosY();
         im.ImGui_SetCursorPos(.{ .x = im.ImGui_GetCursorPosX() + avail - bw, .y = y0 });
@@ -81,7 +80,7 @@ pub fn progressStrip(panel_id: [*:0]const u8, status: []const u8, status_id: []c
         im.ImGui_PushFontFloat(null, im.ImGui_GetStyle().*.FontSizeBase * 0.8);
         const pw = im.ImGui_CalcTextSizeEx(pct_text.ptr, pct_text.ptr + pct_text.len, false, -1).x;
         im.ImGui_SetCursorPosX(im.ImGui_GetCursorPosX() + @max(0, tw - pw));
-        ui.textItem(text_id, pct_text, pal.muted, 0, false);
+        kit.ui.text(text_id, pct_text, pal.muted, 0);
         im.ImGui_PopFont();
     }
     endPanel();
@@ -113,105 +112,3 @@ pub fn snapshot(s: *const settings_mod.Settings) !settings_mod.Settings {
     for (s.values.keys(), s.values.values()) |k, v| try c.set(k, v);
     return c;
 }
-
-// ---------------------------------------------------------------- Dialog (Dialog.cs)
-
-pub const Kind = enum { info, question, warning, err };
-
-pub const Answer = struct { tag: u32, index: usize };
-
-/// Themed modal: icon glyph, text, buttons (buttons[0] primary; Enter = 0, Esc = last). Immediate mode:
-/// `show` once, then `draw` every frame in the same window context; `draw` returns the answer once.
-/// Automation labels: "<text>##dialogButton<i>", "<text>##dialogText".
-pub const Dialog = struct {
-    tag: u32 = 0,
-    kind: Kind = .info,
-    title: [200:0]u8 = @splat(0),
-    text: [1200]u8 = undefined,
-    text_len: usize = 0,
-    buttons: [3][100:0]u8 = @splat(@splat(0)),
-    n: usize = 0,
-    open: bool = false,
-    want_open: bool = false,
-
-    pub fn show(d: *Dialog, tag: u32, kind: Kind, title: []const u8, text: []const u8, buttons: []const []const u8) void {
-        d.tag = tag;
-        d.kind = kind;
-        _ = std.mem.printSentinel(&d.title, "{s}###g1dialog", .{title[0..@min(title.len, 180)]}, 0) catch {};
-        d.text_len = @min(text.len, d.text.len);
-        @memcpy(d.text[0..d.text_len], text[0..d.text_len]);
-        d.n = @min(buttons.len, 3);
-        for (buttons[0..d.n], 0..) |b, i| _ = std.mem.printSentinel(&d.buttons[i], "{s}##dialogButton{d}", .{ b[0..@min(b.len, 80)], i }, 0) catch {};
-        d.open = true;
-        d.want_open = true;
-    }
-
-    pub fn draw(d: *Dialog) ?Answer {
-        if (!d.open) return null;
-        const s = scale();
-        if (d.want_open) {
-            _ = im.ImGui_OpenPopup(&d.title, 0);
-            d.want_open = false;
-        }
-        const vp = im.ImGui_GetMainViewport();
-        im.ImGui_SetNextWindowPosEx(im.ImGuiViewport_GetCenter(vp), im.ImGuiCond_Appearing, .{ .x = 0.5, .y = 0.5 });
-        im.ImGui_SetNextWindowSizeConstraints(.{ .x = 480 * s, .y = 0 }, .{ .x = 480 * s, .y = 10000 }, null, null);
-        im.ImGui_PushStyleColorImVec4(im.ImGuiCol_PopupBg, col(pal.surface));
-        im.ImGui_PushStyleVarImVec2(im.ImGuiStyleVar_WindowPadding, .{ .x = 22 * s, .y = 22 * s });
-        const visible = im.ImGui_BeginPopupModal(&d.title, null, im.ImGuiWindowFlags_AlwaysAutoResize | im.ImGuiWindowFlags_NoSavedSettings);
-        im.ImGui_PopStyleVar();
-        im.ImGui_PopStyleColor();
-        if (!visible) {
-            // closed behind our back (should not happen: no X, Esc handled below)
-            if (!im.ImGui_IsPopupOpen(&d.title, 0)) d.open = false;
-            return null;
-        }
-        defer im.ImGui_EndPopup();
-
-        const icon: u21, const icol: u32 = switch (d.kind) {
-            .warning => .{ kit.ui.icons.warning, pal.danger },
-            .err => .{ kit.ui.icons.err, pal.danger },
-            .question => .{ kit.ui.icons.question, pal.accent },
-            .info => .{ kit.ui.icons.info, pal.accent },
-        };
-        const g = kit.ui.glyph(icon);
-        im.ImGui_PushFontFloat(null, 28);
-        im.ImGui_PushStyleColorImVec4(im.ImGuiCol_Text, col(icol));
-        im.ImGui_TextUnformatted(&g);
-        im.ImGui_PopStyleColor();
-        im.ImGui_PopFont();
-        im.ImGui_SameLineEx(0, 16 * s);
-        im.ImGui_PushFontFloat(null, 14 * 16.0 / 13.0); // FontSize 14 of a 13 px WPF base
-        ui.textItem("dialogText", d.text[0..d.text_len], pal.text, im.ImGui_GetContentRegionAvail().x, false);
-        im.ImGui_PopFont();
-
-        // footer band: Bg + top line, buttons right-aligned
-        const win_pos = im.ImGui_GetWindowPos();
-        const win_size = im.ImGui_GetWindowSize();
-        const y = im.ImGui_GetCursorScreenPos().y + 4 * s;
-        const dl = im.ImGui_GetWindowDrawList();
-        im.ImDrawList_PushClipRect(dl, win_pos, .{ .x = win_pos.x + win_size.x, .y = win_pos.y + win_size.y }, false);
-        im.ImDrawList_AddRectFilled(dl, .{ .x = win_pos.x, .y = y }, .{ .x = win_pos.x + win_size.x, .y = win_pos.y + win_size.y }, kit.app.colorU32(pal.bg));
-        im.ImDrawList_AddLine(dl, .{ .x = win_pos.x, .y = y }, .{ .x = win_pos.x + win_size.x, .y = y }, kit.app.colorU32(pal.line));
-        im.ImDrawList_PopClipRect(dl);
-        im.ImGui_SetCursorScreenPos(.{ .x = im.ImGui_GetCursorScreenPos().x, .y = y + 12 * s });
-
-        var row_w: f32 = 0;
-        for (d.buttons[0..d.n]) |*b| row_w += buttonWidth(b) + 8 * s;
-        alignRight(row_w - 8 * s);
-        var result: ?usize = null;
-        for (d.buttons[0..d.n], 0..) |*b, i| {
-            if (i > 0) im.ImGui_SameLineEx(0, 8 * s);
-            if (button(b, true, i == 0)) result = i;
-            if (i == 0) im.ImGui_SetItemDefaultFocus();
-        }
-        if (result == null and d.n > 0 and !im.ImGui_IsWindowAppearing()) {
-            if (im.ImGui_IsKeyPressed(im.ImGuiKey_Enter) or im.ImGui_IsKeyPressed(im.ImGuiKey_KeypadEnter)) result = 0;
-            if (im.ImGui_IsKeyPressed(im.ImGuiKey_Escape)) result = d.n - 1;
-        }
-        const r = result orelse return null;
-        im.ImGui_CloseCurrentPopup();
-        d.open = false;
-        return .{ .tag = d.tag, .index = r };
-    }
-};

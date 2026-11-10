@@ -121,7 +121,7 @@ pub const View = struct {
 
     pub fn draw(v: *View, ctx: *Ctx) void {
         const s = ui.scale();
-        if (ui.jobDone(&v.job)) {
+        if (v.job.takeFinished()) {
             std.mem.swap(std.heap.ArenaAllocator, &v.arena, &v.next_arena);
             v.tabs = v.next_tabs;
             _ = v.next_arena.reset(.free_all);
@@ -138,7 +138,15 @@ pub const View = struct {
         const busy = v.job.isRunning();
         const avail = im.ImGui_GetContentRegionAvail();
         if (im.ImGui_BeginChild("##startupMain", .{ .x = avail.x - ui.colWidth(), .y = avail.y }, 0, im.ImGuiWindowFlags_NoBackground)) {
-            ui.tabs(&tab_titles, &tab_ids, &v.cur);
+            if (im.ImGui_BeginTabBar("##startupTabs", 0)) {
+                for (tab_titles, tab_ids, 0..) |t, id, i| {
+                    var lb: [96]u8 = undefined;
+                    if (!im.ImGui_BeginTabItem(ui.z(&lb, "{s}##{s}", .{ t, id }).ptr, null, 0)) continue;
+                    v.cur = i;
+                    im.ImGui_EndTabItem();
+                }
+                im.ImGui_EndTabBar();
+            }
             v.list(v.cur);
         }
         im.ImGui_EndChild();
