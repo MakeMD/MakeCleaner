@@ -11,18 +11,40 @@ It ships the following third-party components:
    Shipped unmodified (Non-CCleaner flavor). The license covers only this data file,
    not the MakeCleaner program. See rules\README.md.
 
-2. .NET runtime and WPF (bundled into MakeCleaner.exe; WPF's native *_cor3.dll and D3DCompiler_47_cor3.dll
-   ship next to it as part of the same runtime)
-   Copyright (c) .NET Foundation and Contributors
-   License: MIT - https://github.com/dotnet/runtime/blob/main/LICENSE.TXT
+2. Dear ImGui v1.93.0 (docking branch), compiled into MakeCleaner.exe
+   https://github.com/ocornut/imgui
+   License: MIT (full text below)
 
-3. Microsoft.Data.Sqlite, Microsoft.Data.Sqlite.Core
-   Copyright (c) .NET Foundation and Contributors
-   License: MIT - https://github.com/dotnet/efcore/blob/main/LICENSE.txt
+3. dear_bindings v0.27 (C API "dcimgui" for Dear ImGui), compiled into MakeCleaner.exe
+   https://github.com/dearimgui/dear_bindings
+   License: MIT (full text below; it is the license file shipped with the dear_bindings release)
 
-4. SQLitePCLRaw (core, provider.e_sqlite3, bundle_e_sqlite3, lib.e_sqlite3)
-   Copyright (c) Eric Sink / SourceGear
-   License: Apache License 2.0 - https://github.com/ericsink/SQLitePCL.raw/blob/master/LICENSE.TXT
-
-5. SQLite (e_sqlite3.dll)
+4. SQLite 3.54.1, compiled into MakeCleaner.exe
+   https://www.sqlite.org
    Public domain - https://www.sqlite.org/copyright.html
+
+
+MIT License text for components 2 and 3
+---------------------------------------
+
+The MIT License (MIT)
+
+Copyright (c) 2014-2026 Omar Cornut
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.

@@ -1,4 +1,5 @@
-﻿; MakeCleaner - per-user installer. Build with tools\release.ps1 (it passes MyAppVersion from the csproj).
+﻿; MakeCleaner - per-user installer. Build with tools\release.ps1 (it passes MyAppVersion from src\main.zig).
+; Ships dist\publish: MakeCleaner.exe (Zig, Dear ImGui and SQLite compiled in, no runtime dlls), rules\, THIRD-PARTY-NOTICES.txt.
 ; No autostart, no services, no bundled offers, no network. The only system object the app can own is the
 ; scheduled task the user creates in Options; uninstall removes it.
 ; ponytail: no license page, no custom wizard pages, no icon - Inno defaults are enough.
@@ -35,6 +36,11 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 [Files]
 Source: "..\dist\publish\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
+; 1.x (.NET/WPF) left native runtime dlls next to the exe; 2.x needs none of them.
+[InstallDelete]
+Type: files; Name: "{app}\*_cor3.dll"
+Type: files; Name: "{app}\e_sqlite3.dll"
+
 [Icons]
 Name: "{autoprograms}\MakeCleaner"; Filename: "{app}\MakeCleaner.exe"
 Name: "{autodesktop}\MakeCleaner"; Filename: "{app}\MakeCleaner.exe"; Tasks: desktopicon
@@ -43,7 +49,7 @@ Name: "{autodesktop}\MakeCleaner"; Filename: "{app}\MakeCleaner.exe"; Tasks: des
 Filename: "{app}\MakeCleaner.exe"; Description: "{cm:LaunchProgram,MakeCleaner}"; Flags: postinstall nowait skipifsilent
 
 ; The task exists only if the user created it in Options > Scheduled cleaning; schtasks just fails quietly otherwise.
-; Name must match Schedule.TaskName in src\MakeCleaner.Core\Schedule.cs.
+; Name must match task_name in src\core\schedule.zig.
 [UninstallRun]
 Filename: "{sys}\schtasks.exe"; Parameters: "/Delete /TN ""MakeCleaner Auto Clean"" /F"; Flags: runhidden waituntilterminated; RunOnceId: "deltask"
 

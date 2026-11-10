@@ -1,112 +1,85 @@
-# GUI smoke for the Cleaner screen: tri-state group checkbox, Cancel during Analyze, Summary / Files views,
-# and /auto from MakeCleaner.exe. TEMP/LOCALAPPDATA/APPDATA point at a fixture; every Windows rule is off except
+# GUI smoke for the Cleaner screen: tri-state group checkbox, Cancel during Analyze, Summary / Files views, and /auto
+# from MakeCleaner.exe. Sandbox copy (portable); TEMP/LOCALAPPDATA/APPDATA point at a fixture; every rule is off except
 # Temporary Files, so nothing real is ever scanned. The window never clicks Run Cleaner; only the final /auto cleans,
-# and it cleans the fixture TEMP. UI Automation, no keystrokes. Pure ASCII (PS 5.1).
-param([int]$Screen = 1, [string]$Config = 'Debug', [string]$BinDir = '', [string]$ShotDir = $env:TEMP, [int]$Files = 40000)
+# and it cleans the fixture TEMP. MakeKit automation pipe. Pure ASCII (PS 5.1).
+param([int]$Screen = 1, [string]$BinDir = '', [string]$ShotDir = $env:TEMP, [int]$Files = 40000)
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
-$bin = if ($BinDir) { $BinDir } else { Join-Path $root "src\MakeCleaner\bin\$Config\net10.0-windows" }
-$exe = Join-Path $bin 'MakeCleaner.exe'
-. (Join-Path $PSScriptRoot 'screenpin.ps1')
-Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes, System.Drawing
-$AT = [System.Windows.Automation.AutomationElement]
-$TS = [System.Windows.Automation.TreeScope]
-$CT = [System.Windows.Automation.ControlType]
+if (-not $BinDir) { $BinDir = Join-Path $root 'zig-out\bin' } # -BinDir: a published copy (tools\releasecheck.ps1)
+. (Join-Path $PSScriptRoot 'mc-auto.ps1')
 
-# Fixture: a TEMP big enough that Analyze is still running when Cancel is pressed, and empty AppData (no browsers).
-$fx = Join-Path ([IO.Path]::GetTempPath()) ('mc-cleaner-smoke-' + [guid]::NewGuid().ToString('N'))
-$temp = Join-Path $fx 'Temp'; $noApps = Join-Path $fx 'noapps'
-New-Item -ItemType Directory -Force $noApps | Out-Null
-# many folders, few files each: walking folders is what makes Analyze slow enough to be cancelled
-$dirs = [int]($Files / 10)
-for ($d = 0; $d -lt $dirs; $d++) { [void][IO.Directory]::CreateDirectory((Join-Path $temp ("a{0}\d{1}" -f ($d % 50), $d))) }
-$empty = New-Object byte[] 0
-for ($i = 0; $i -lt $Files; $i++) { $d = $i % $dirs; [IO.File]::WriteAllBytes((Join-Path $temp ("a{0}\d{1}\f{2}.tmp" -f ($d % 50), $d, $i)), $empty) }
-Set-Content (Join-Path $bin 'portable.dat') '#PORTABLE#'
-$names = Select-String -Path (Join-Path $root 'src\MakeCleaner.Core\rules\Windows.ini') -Pattern '^\[(.+)\]$' | ForEach-Object { $_.Matches[0].Groups[1].Value }
-Set-Content (Join-Path $bin 'MakeCleaner.ini') (@('[Options]', 'Custom Files and Folders=False') + ($names | ForEach-Object { "$_=" + ($_ -eq 'Temporary Files') }))
-
-function Cond($prop, $val) { New-Object System.Windows.Automation.PropertyCondition($prop, $val) }
-function ById($w, $id) { $w.FindFirst($TS::Descendants, (Cond $AT::AutomationIdProperty $id)) }
-function Status($w) { (ById $w 'status').Current.Name }
-function WaitStatus($w, $like, $tries = 150) { for ($i = 0; $i -lt $tries; $i++) { $s = Status $w; if ($s -like $like) { return $s }; Start-Sleep -Milliseconds 200 }; throw "timeout waiting for '$like', last: $s" }
-function Invoke($e) { $e.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke() }
-function Shot($w, $name) {
-    $r = $w.Current.BoundingRectangle
-    $bmp = New-Object System.Drawing.Bitmap ([int]$r.Width), ([int]$r.Height)
-    [System.Drawing.Graphics]::FromImage($bmp).CopyFromScreen([int]$r.X, [int]$r.Y, 0, 0, $bmp.Size)
-    $p = Join-Path $ShotDir "makecleaner-cleaner-$name.png"; $bmp.Save($p); Write-Host "screenshot: $p"
-}
-function GroupState($w, $group) {
-    $g = (ById $w 'windows').FindFirst($TS::Children, (New-Object System.Windows.Automation.AndCondition((Cond $AT::ControlTypeProperty $CT::TreeItem), (Cond $AT::NameProperty $group))))
-    $cb = $g.FindFirst($TS::Children, (Cond $AT::ControlTypeProperty $CT::CheckBox))
-    $cb.GetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern).Current.ToggleState
-}
-
-Start-ScreenPin -Screen $Screen -Exe $exe
-$old = $env:TEMP, $env:LOCALAPPDATA, $env:APPDATA
-$env:TEMP = $temp; $env:LOCALAPPDATA = $noApps; $env:APPDATA = $noApps
-$p = Start-Process $exe -PassThru
-$env:TEMP, $env:LOCALAPPDATA, $env:APPDATA = $old
+$sb = New-McSandbox $BinDir 'cleaner'
+$app = $null
 try {
-    $w = $null
-    for ($i = 0; $i -lt 100 -and -not $w; $i++) { # up to 20 s: a cold WPF start can take >10 s
-        Start-Sleep -Milliseconds 200
-        $w = $AT::RootElement.FindFirst($TS::Children, (Cond $AT::ProcessIdProperty $p.Id))
+    # A TEMP big enough that Analyze is still running when Cancel is pressed: many folders, few files each
+    # (walking folders is what makes Analyze slow enough to be cancelled).
+    $temp = $sb.Temp
+    $dirs = [int]($Files / 10)
+    for ($d = 0; $d -lt $dirs; $d++) { [void][IO.Directory]::CreateDirectory((Join-Path $temp ("a{0}\d{1}" -f ($d % 50), $d))) }
+    $empty = New-Object byte[] 0
+    for ($i = 0; $i -lt $Files; $i++) { $d = $i % $dirs; [IO.File]::WriteAllBytes((Join-Path $temp ("a{0}\d{1}\f{2}.tmp" -f ($d % 50), $d, $i)), $empty) }
+    Set-McIni $sb -On 'Temporary Files'
+
+    # group -> rule names (Section= in Windows.ini) for the tri-state check
+    $section = @{}; $cur = $null
+    foreach ($l in [IO.File]::ReadAllLines((Join-Path $sb.App 'rules\Windows.ini'))) {
+        if ($l -match '^\[(.+)\]\s*$') { $cur = $Matches[1] } elseif ($cur -and $l -match '^Section=(.+)$') { $section[$cur] = $Matches[1].Trim() }
     }
-    if (-not $w) { throw 'window did not open' }
-    WaitStatus $w '*applications detected' | Out-Null
-    Shot $w 'main'
+    # The automation item has no "mixed" flag (kit.ui.triCheckbox reports mixed as unchecked): a group reads
+    # Indeterminate when its box is unchecked while some of its items are ticked, Off when none are.
+    function GroupState($group) {
+        $items = @(Get-AutoItems $app)
+        $box = @($items | Where-Object { $_.label -eq "$group##wg:$group" })
+        if ($box.Count -ne 1) { return 'missing' }
+        $kids = @($section.Keys | Where-Object { $section[$_] -eq $group } | ForEach-Object { $n = $_; $items | Where-Object { $_.label -eq "$n##wi:$n" } })
+        $on = @($kids | Where-Object { $_.checked }).Count
+        if ($box[0].checked) { 'On' } elseif ($on -gt 0 -and $on -lt $kids.Count) { 'Indeterminate' } elseif ($on -eq 0 -and $kids.Count -gt 0) { 'Off' } else { "?($on/$($kids.Count))" }
+    }
+
+    $app = Start-McApp $sb -Screen $Screen
+    $null = Wait-McLabel $app '*applications detected##status'
+    Save-McShot $app (Join-Path $ShotDir 'makecleaner-cleaner-main.png')
 
     # only Temporary Files is on: System shows the third state, Windows Explorer is off
-    $sys = GroupState $w 'System'; $exp = GroupState $w 'Windows Explorer'
+    $sys = GroupState 'System'; $exp = GroupState 'Windows Explorer'
     Write-Host "groups: System=$sys, Windows Explorer=$exp"
 
-    # Cancel while analyzing: nothing may stay armed for Run Cleaner
-    # (buttons looked up first: a UIA search takes longer than analyzing the fixture; with a warm disk cache the
-    #  analysis can still win the race, so a few tries)
-    $cancel = ById $w 'cancel'; $analyzeBtn = ById $w 'analyze'; $c = ''
+    # Cancel while analyzing: nothing may stay armed for Run Cleaner (a warm disk cache can still win the race: a few tries)
+    $c = ''
     for ($try = 1; $try -le 5 -and $c -notlike 'Analysis cancelled*'; $try++) {
         $sw = [Diagnostics.Stopwatch]::StartNew()
-        Invoke $analyzeBtn
-        for ($i = 0; $i -lt 2000 -and -not $cancel.Current.IsEnabled; $i++) { }
-        $seen = $sw.ElapsedMilliseconds; $err = ''
-        try { Invoke $cancel } catch { $err = $_.Exception.InnerException.GetType().Name } # too late: this Analyze already finished
-        $c = WaitStatus $w 'Analysis*'
-        Write-Host ("try {0}: cancel enabled after {1} ms (polls {2}), invoke {3}, status after {4} ms: {5}" -f $try, $seen, $i, $(if ($err) { $err } else { 'ok' }), $sw.ElapsedMilliseconds, $c)
+        Invoke-AutoClick $app 'Analyze##analyze'
+        $err = 'ok'
+        try { Invoke-AutoClick $app 'Cancel##cancel' } catch { $err = $_.Exception.Message } # too late: this Analyze already finished
+        $c = (Wait-McLabel $app 'Analysis*##status' 60000).label
+        Write-Host ("try {0}: cancel click {1}, status after {2} ms: {3}" -f $try, $err, $sw.ElapsedMilliseconds, $c)
     }
-    $cleanAfterCancel = (ById $w 'clean').Current.IsEnabled
+    $cleanAfterCancel = -not (Wait-AutoItem $app 'Run Cleaner##clean').disabled
     Write-Host "cancel: $c (Run Cleaner enabled: $cleanAfterCancel)"
 
     # full Analyze, then Summary and Files views
-    Invoke (ById $w 'analyze')
-    $a = WaitStatus $w 'Analysis complete*'
+    Invoke-AutoClick $app 'Analyze##analyze'
+    $a = (Wait-McLabel $app 'Analysis complete*##status' 120000).label
     Write-Host "analyze: $a"
-    $summaryRows = (ById $w 'results').FindAll($TS::Children, (Cond $AT::ControlTypeProperty $CT::DataItem)).Count
-    Shot $w 'summary'
-    (ById $w 'viewFiles').GetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern).Select()
-    Start-Sleep -Milliseconds 500
-    $fileRows = (ById $w 'results').FindAll($TS::Children, (Cond $AT::ControlTypeProperty $CT::DataItem)).Count
+    Invoke-AutoClick $app 'Summary##viewSummary'; $null = Invoke-AutoFrames $app 3
+    $summaryRows = @(Get-AutoItems $app | Where-Object { $_.label -match '##l\d+$' }).Count
+    Save-McShot $app (Join-Path $ShotDir 'makecleaner-cleaner-summary.png')
+    Invoke-AutoClick $app 'Files##viewFiles'; $null = Invoke-AutoFrames $app 3
+    $fileRows = @(Get-AutoItems $app | Where-Object { $_.label -match '##l\d+$' }).Count
     Write-Host "rows: summary=$summaryRows files(visible)=$fileRows"
-    Shot $w 'files'
-    $w.GetCurrentPattern([System.Windows.Automation.WindowPattern]::Pattern).Close()
-    $p.WaitForExit(5000) | Out-Null
+    Save-McShot $app (Join-Path $ShotDir 'makecleaner-cleaner-files.png')
+    $code = Close-McApp $app
     $left = @(Get-ChildItem $temp -Recurse -File).Count
 
-    # /auto from the WPF exe: no window, exit code 0, the fixture TEMP emptied
-    $env:TEMP = $temp; $env:LOCALAPPDATA = $noApps; $env:APPDATA = $noApps
-    $auto = Start-Process $exe -ArgumentList '/auto' -PassThru -Wait
-    $env:TEMP, $env:LOCALAPPDATA, $env:APPDATA = $old
+    # /auto: no window, exit code 0, the fixture TEMP emptied
+    $auto = Invoke-McHeadless $sb -Arguments '/auto' -Screen $Screen -TimeoutMs 300000
     $afterAuto = @(Get-ChildItem $temp -Recurse -File).Count
-    Write-Host "window run left the fixture: $left of $Files; /auto exit $($auto.ExitCode), files left $afterAuto"
+    Write-Host "window run left the fixture: $left of $Files; /auto exit $($auto.ExitCode), window $($auto.SawWindow), files left $afterAuto"
 
-    if ($sys -ne 'Indeterminate' -or $exp -ne 'Off' -or -not $cancel -or $c -notlike 'Analysis cancelled*' -or $cleanAfterCancel `
-        -or $a -notlike "Analysis complete: $Files files*" -or $summaryRows -ne 1 -or $fileRows -lt 2 -or $left -ne $Files `
-        -or $auto.ExitCode -ne 0 -or $afterAuto -ne 0) { throw 'SMOKE FAILED' }
+    if ($sys -ne 'Indeterminate' -or $exp -ne 'Off' -or $c -notlike 'Analysis cancelled*' -or $cleanAfterCancel `
+        -or $a -notlike "Analysis complete: $Files files*" -or $summaryRows -ne 1 -or $fileRows -lt 2 -or $left -ne $Files -or $code -ne 0 `
+        -or $auto.ExitCode -ne 0 -or $auto.SawWindow -or $afterAuto -ne 0) { throw 'SMOKE FAILED' }
     Write-Host 'SMOKE OK'
 } finally {
-    Stop-ScreenPin
-    if (-not $p.HasExited) { $p.Kill() }
-    Remove-Item -Recurse -Force $fx -ErrorAction SilentlyContinue
-    Remove-Item (Join-Path $bin 'portable.dat'), (Join-Path $bin 'MakeCleaner.ini'), (Join-Path $bin 'MakeCleaner-auto.log') -ErrorAction SilentlyContinue
+    Remove-McSandbox $sb $app
 }

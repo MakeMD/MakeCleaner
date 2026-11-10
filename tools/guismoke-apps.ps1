@@ -1,73 +1,47 @@
-# GUI smoke for the Applications tab: portable mode, TEMP pointed at a fixture, waits for app detection,
-# opens the Applications tab, ticks the first detected entry (if UIA allows) and runs Analyze ONLY.
-# Never clicks Run Cleaner. Pure ASCII (PS 5.1).
-param([int]$Screen = 1, [string]$Config = 'Debug', [string]$BinDir = '', [string]$Shot = "$env:TEMP\makecleaner-apps-smoke.png")
+# GUI smoke for the Applications tab: sandbox copy (portable), TEMP/AppData pointed at fixtures, waits for app
+# detection, opens the Applications tab, ticks the first detected entry and runs Analyze ONLY (read-only).
+# Never clicks Run Cleaner. MakeKit automation pipe. Pure ASCII (PS 5.1).
+param([int]$Screen = 1, [string]$BinDir = '', [string]$Shot = "$env:TEMP\makecleaner-apps-smoke.png")
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
-$bin = if ($BinDir) { $BinDir } else { Join-Path $root "src\MakeCleaner\bin\$Config\net10.0-windows" } # -BinDir: a published copy (tools\releasecheck.ps1)
-$exe = Join-Path $bin 'MakeCleaner.exe'
-. (Join-Path $PSScriptRoot 'screenpin.ps1')
-Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes, System.Drawing
-$AT = [System.Windows.Automation.AutomationElement]
-$TS = [System.Windows.Automation.TreeScope]
+if (-not $BinDir) { $BinDir = Join-Path $root 'zig-out\bin' } # -BinDir: a published copy (tools\releasecheck.ps1)
+. (Join-Path $PSScriptRoot 'mc-auto.ps1')
 
-$fx = Join-Path ([IO.Path]::GetTempPath()) ('mc-smoke-' + [guid]::NewGuid().ToString('N'))
-New-Item -ItemType Directory -Force $fx | Out-Null
-[IO.File]::WriteAllBytes((Join-Path $fx 'a.tmp'), (New-Object byte[] 1024))
-Set-Content (Join-Path $bin 'portable.dat') '#PORTABLE#'
-
-function ById($w, $id) { $w.FindFirst($TS::Descendants, (New-Object System.Windows.Automation.PropertyCondition($AT::AutomationIdProperty, $id))) }
-function ByName($w, $name) { $w.FindFirst($TS::Descendants, (New-Object System.Windows.Automation.PropertyCondition($AT::NameProperty, $name))) }
-function Status($w) { (ById $w 'status').Current.Name }
-function WaitStatus($w, $like) { for ($i = 0; $i -lt 150; $i++) { $s = Status $w; if ($s -like $like) { return $s }; Start-Sleep -Milliseconds 200 }; throw "timeout waiting for '$like', last: $s" }
-
-Start-ScreenPin -Screen $Screen -Exe $exe
-$oldTemp = $env:TEMP; $env:TEMP = $fx
-$sw = [Diagnostics.Stopwatch]::StartNew()
-$p = Start-Process $exe -PassThru
-$env:TEMP = $oldTemp
+$sb = New-McSandbox $BinDir 'apps'
+$app = $null
 try {
-    $w = $null
-    for ($i = 0; $i -lt 100 -and -not $w; $i++) { # up to 20 s: a cold WPF start can take >10 s
-        Start-Sleep -Milliseconds 200
-        $w = $AT::RootElement.FindFirst($TS::Children, (New-Object System.Windows.Automation.PropertyCondition($AT::ProcessIdProperty, $p.Id)))
-    }
-    if (-not $w) { throw 'window did not open' }
-    $d = WaitStatus $w '*applications detected'
+    [IO.File]::WriteAllBytes((Join-Path $sb.Temp 'a.tmp'), (New-Object byte[] 1024))
+    Set-McIni $sb
+    $sw = [Diagnostics.Stopwatch]::StartNew()
+    $app = Start-McApp $sb -Screen $Screen
+    $d = (Wait-McLabel $app '*applications detected##status').label
     Write-Host ("detect: $d in {0:N1}s" -f $sw.Elapsed.TotalSeconds)
-    (ByName $w 'Applications').GetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern).Select()
-    Start-Sleep -Milliseconds 300
-    $tree = ById $w 'apps'
-    $item = New-Object System.Windows.Automation.PropertyCondition($AT::ControlTypeProperty, [System.Windows.Automation.ControlType]::TreeItem)
-    $groups = $tree.FindAll($TS::Children, $item)
+    Invoke-AutoClick $app 'Applications##tabApps'
+    $null = Invoke-AutoFrames $app 3
+    $groups = @(Get-McItems $app '*##ag:*')
     Write-Host "groups: $($groups.Count)"
     $ticked = '(none)'
     if ($groups.Count -gt 0) {
-        $g = $groups[0]
-        $g.GetCurrentPattern([System.Windows.Automation.ExpandCollapsePattern]::Pattern).Expand()
-        Start-Sleep -Milliseconds 300
-        $leaf = $g.FindFirst($TS::Children, $item)
-        # the tree item carries the CheckBox that toggles
-        if ($leaf) { $leaf = $leaf.FindFirst($TS::Children, (New-Object System.Windows.Automation.PropertyCondition($AT::ControlTypeProperty, [System.Windows.Automation.ControlType]::CheckBox))) }
-        $tp = $null
-        if ($leaf -and $leaf.TryGetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern, [ref]$tp)) { $tp.Toggle(); $ticked = $leaf.Current.Name }
+        $leaves = @(Get-McItems $app '*##ai:*')
+        if ($leaves.Count -eq 0) { # first group collapsed: expand it
+            Invoke-AutoClick $app ('##at:' + ($groups[0].label -replace '^.*##ag:', ''))
+            $null = Invoke-AutoFrames $app 3
+            $leaves = @(Get-McItems $app '*##ai:*')
+        }
+        if ($leaves.Count -gt 0) {
+            Invoke-AutoClick $app $leaves[0].label; $null = Invoke-AutoFrames $app 2
+            if ((Wait-AutoItem $app $leaves[0].label).checked) { $ticked = $leaves[0].label }
+        }
     }
     Write-Host "ticked: $ticked"
-    (ById $w 'analyze').GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
-    $a = WaitStatus $w 'Analysis complete*'
+    Invoke-AutoClick $app 'Analyze##analyze'
+    $a = (Wait-McLabel $app 'Analysis complete*##status' 120000).label
     Write-Host "analyze: $a"
-    $r = $w.Current.BoundingRectangle
-    $bmp = New-Object System.Drawing.Bitmap ([int]$r.Width), ([int]$r.Height)
-    [System.Drawing.Graphics]::FromImage($bmp).CopyFromScreen([int]$r.X, [int]$r.Y, 0, 0, $bmp.Size)
-    $bmp.Save($Shot); Write-Host "screenshot: $Shot"
-    $left = @(Get-ChildItem $fx -File).Count
-    $w.GetCurrentPattern([System.Windows.Automation.WindowPattern]::Pattern).Close()
-    $p.WaitForExit(5000) | Out-Null
-    if ($groups.Count -eq 0 -or $a -notlike '*registry entries*' -or $left -ne 1) { throw 'SMOKE FAILED' }
+    Save-McShot $app $Shot
+    $left = @(Get-ChildItem $sb.Temp -File).Count
+    $code = Close-McApp $app
+    if ($groups.Count -eq 0 -or $ticked -eq '(none)' -or $a -notlike '*registry entries*' -or $left -ne 1 -or $code -ne 0) { throw 'SMOKE FAILED' }
     Write-Host 'SMOKE OK (analyze only, nothing deleted)'
 } finally {
-    Stop-ScreenPin
-    if (-not $p.HasExited) { $p.Kill() }
-    Remove-Item -Recurse -Force $fx -ErrorAction SilentlyContinue
-    Remove-Item (Join-Path $bin 'portable.dat'), (Join-Path $bin 'MakeCleaner.ini') -ErrorAction SilentlyContinue
+    Remove-McSandbox $sb $app
 }

@@ -1,84 +1,57 @@
-# GUI smoke for Tools (Drive Wiper, System Restore) and Options: opens each page via UI Automation,
-# ticks the first drive to show warnings, takes screenshots. NEVER clicks Wipe / Remove / Erase.
-# Pure ASCII (PS 5.1).
-param([int]$Screen = 1, [string]$Config = 'Debug', [string]$BinDir = '', [string]$ShotDir = $env:TEMP)
+# GUI smoke for Tools (Drive Wiper, System Restore) and Options > Settings: sandbox copy (portable), TEMP/AppData
+# pointed at fixtures. Opens each page over the MakeKit automation pipe, ticks the first drive to show warnings (then
+# unticks it), takes screenshots. NEVER clicks Wipe / Remove / Erase / Restart as admin. Pure ASCII (PS 5.1).
+param([int]$Screen = 1, [string]$BinDir = '', [string]$ShotDir = $env:TEMP)
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
-$bin = if ($BinDir) { $BinDir } else { Join-Path $root "src\MakeCleaner\bin\$Config\net10.0-windows" } # -BinDir: a published copy (tools\releasecheck.ps1)
-$exe = Join-Path $bin 'MakeCleaner.exe'
-. (Join-Path $PSScriptRoot 'screenpin.ps1')
-Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes, System.Drawing
-$AT = [System.Windows.Automation.AutomationElement]
-$Desc = [System.Windows.Automation.TreeScope]::Descendants
-Set-Content (Join-Path $bin 'portable.dat') '#PORTABLE#'
+if (-not $BinDir) { $BinDir = Join-Path $root 'zig-out\bin' } # -BinDir: a published copy (tools\releasecheck.ps1)
+. (Join-Path $PSScriptRoot 'mc-auto.ps1')
 
-function ById($w, $id) { $w.FindFirst($Desc, (New-Object System.Windows.Automation.PropertyCondition($AT::AutomationIdProperty, $id))) }
-function Tab($w, $name) {
-    $c = New-Object System.Windows.Automation.AndCondition(
-        (New-Object System.Windows.Automation.PropertyCondition($AT::ControlTypeProperty, [System.Windows.Automation.ControlType]::ListItem)), # rail tile / sub-menu row
-        (New-Object System.Windows.Automation.PropertyCondition($AT::NameProperty, $name)))
-    $w.FindFirst($Desc, $c).GetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern).Select()
-    Start-Sleep -Milliseconds 700
-}
-function Shot($w, $name) {
-    $r = $w.Current.BoundingRectangle
-    $bmp = New-Object System.Drawing.Bitmap ([int]$r.Width), ([int]$r.Height)
-    [System.Drawing.Graphics]::FromImage($bmp).CopyFromScreen([int]$r.X, [int]$r.Y, 0, 0, $bmp.Size)
-    $f = Join-Path $ShotDir "makecleaner-$name.png"; $bmp.Save($f); Write-Host "screenshot: $f"
-}
-function Items($el) { @($el.FindAll($Desc, (New-Object System.Windows.Automation.PropertyCondition($AT::ControlTypeProperty, [System.Windows.Automation.ControlType]::CheckBox)))) }
-
-Start-ScreenPin -Screen $Screen -Exe $exe
-$p = Start-Process $exe -PassThru
+$sb = New-McSandbox $BinDir 'wiper'
+$app = $null
 try {
-    $w = $null
-    for ($i = 0; $i -lt 100 -and -not $w; $i++) { # up to 20 s: a cold WPF start can take >10 s
-        Start-Sleep -Milliseconds 200
-        $w = $AT::RootElement.FindFirst([System.Windows.Automation.TreeScope]::Children, (New-Object System.Windows.Automation.PropertyCondition($AT::ProcessIdProperty, $p.Id)))
-    }
-    if (-not $w) { throw 'window did not open' }
+    Set-McIni $sb
+    $app = Start-McApp $sb -Screen $Screen
     $fail = @()
 
-    $wipeItem = $w.FindFirst($Desc, (New-Object System.Windows.Automation.PropertyCondition($AT::NameProperty, 'Wipe Free Space')))
-    Write-Host ("cleaner has Wipe Free Space item: " + [bool]$wipeItem)
-    if (-not $wipeItem) { $fail += 'no wipe item' }
+    $wipeItem = @(Get-McItems $app 'Wipe Free Space##wi:Wipe Free Space')
+    Write-Host ("cleaner has Wipe Free Space item: " + ($wipeItem.Count -eq 1))
+    if ($wipeItem.Count -ne 1) { $fail += 'no wipe item' }
 
-    Tab $w 'Tools'; Tab $w 'Drive Wiper'
-    $list = $null # the page is built on first open (drive and SSD probes can take a few seconds)
-    for ($i = 0; $i -lt 50 -and -not $list; $i++) { $list = ById $w 'drives'; if (-not $list) { Start-Sleep -Milliseconds 200 } }
-    $drives = Items $list
-    Write-Host ("drives listed: " + $drives.Count + " -> " + (($drives | ForEach-Object { $_.Current.Name }) -join ' | '))
-    if ($drives.Count -eq 0) { $fail += 'no drives' }
-    else { $drives[0].GetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern).Toggle(); Start-Sleep -Milliseconds 500 }
-    Write-Host ("warning: " + (ById $w 'wipeWarning').Current.Name)
-    Write-Host ("wipe button enabled (not clicked): " + (ById $w 'wipe').Current.IsEnabled)
-    Shot $w 'drivewiper'
-
-    Tab $w 'System Restore'
-    $rp = ById $w 'rpStatus'
-    for ($i = 0; $i -lt 25 -and -not $rp.Current.Name; $i++) { Start-Sleep -Milliseconds 200 }
-    Write-Host ("restore status: " + $rp.Current.Name)
-    if (-not $rp.Current.Name) { $fail += 'restore status empty' }
-    Shot $w 'restore'
-
-    Tab $w 'Options'
-    Tab $w 'Settings'
-    $sd = ById $w 'secureDelete'
-    if (-not $sd) { $fail += 'secure delete combo missing' }
-    else {
-        # a non-editable WPF ComboBox exposes its choice through SelectionPattern, not ValuePattern
-        $sel = @($sd.GetCurrentPattern([System.Windows.Automation.SelectionPattern]::Pattern).Current.GetSelection() | ForEach-Object { $_.Current.Name })
-        Write-Host ("secure delete combo: " + ($sel -join ', '))
-        if ($sel.Count -ne 1) { $fail += 'secure delete combo has no selection' }
+    Invoke-AutoClick $app 'Tools'; Invoke-AutoClick $app 'Drive Wiper##toolsNav4'
+    $drives = @()  # the page probes drives and SSDs on first open
+    for ($i = 0; $i -lt 50 -and $drives.Count -eq 0; $i++) {
+        $null = Invoke-AutoFrames $app 2; Start-Sleep -Milliseconds 200
+        $drives = @(Get-AutoItems $app | Where-Object { $_.label -match '##drive\d+$' })
     }
-    Shot $w 'options'
+    Write-Host ("drives listed: " + $drives.Count + " -> " + (($drives | ForEach-Object { $_.label -replace '##drive\d+$', '' }) -join ' | '))
+    if ($drives.Count -eq 0) { $fail += 'no drives' }
+    else {
+        Invoke-AutoClick $app $drives[0].label; $null = Invoke-AutoFrames $app 3
+        if (-not (Wait-AutoItem $app $drives[0].label).checked) { $fail += 'drive tick did not stick' }
+    }
+    Write-Host ("warning: " + (Get-McText $app 'wipeWarning'))
+    Write-Host ("wipe button enabled (not clicked): " + (-not (Wait-AutoItem $app 'Wipe##wipe').disabled))
+    Save-McShot $app (Join-Path $ShotDir 'makecleaner-drivewiper.png')
+    if ($drives.Count -gt 0) { Invoke-AutoClick $app $drives[0].label; $null = Invoke-AutoFrames $app 2 }
 
-    $w.GetCurrentPattern([System.Windows.Automation.WindowPattern]::Pattern).Close()
-    $p.WaitForExit(5000) | Out-Null
+    Invoke-AutoClick $app 'System Restore##toolsNav5'
+    $rp = ''
+    for ($i = 0; $i -lt 50 -and (-not $rp -or $rp -eq 'Loading...'); $i++) { $null = Invoke-AutoFrames $app 2; Start-Sleep -Milliseconds 200; $rp = Get-McText $app 'rpStatus' }
+    Write-Host ("restore status: " + $rp)
+    if (-not $rp) { $fail += 'restore status empty' }
+    Save-McShot $app (Join-Path $ShotDir 'makecleaner-restore.png')
+
+    Invoke-AutoClick $app 'Options'; Invoke-AutoClick $app 'Settings##optionsNav0'
+    $sd = Get-McText $app 'secureDelete' # combo button 'chosen method##secureDelete'
+    Write-Host ("secure delete combo: " + $sd)
+    if ($null -eq $sd) { $fail += 'secure delete combo missing' } elseif (-not $sd) { $fail += 'secure delete combo has no selection' }
+    Save-McShot $app (Join-Path $ShotDir 'makecleaner-options.png')
+
+    $code = Close-McApp $app
+    if ($code -ne 0) { $fail += "exit code $code" }
     if ($fail) { throw ('SMOKE FAILED: ' + ($fail -join ', ')) }
     Write-Host 'SMOKE OK'
 } finally {
-    Stop-ScreenPin
-    if (-not $p.HasExited) { $p.Kill() }
-    Remove-Item (Join-Path $bin 'portable.dat'), (Join-Path $bin 'MakeCleaner.ini') -ErrorAction SilentlyContinue
+    Remove-McSandbox $sb $app
 }

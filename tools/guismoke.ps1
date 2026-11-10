@@ -1,63 +1,34 @@
-# GUI smoke: runs the built exe in portable mode with TEMP pointed at a fixture folder,
-# clicks Analyze then Run Cleaner via UI Automation (no keystrokes), checks the status line,
-# saves a screenshot. Never touches the real %TEMP%. Pure ASCII (PS 5.1).
-param([int]$Screen = 1, [string]$Config = 'Debug', [string]$BinDir = '', [string]$Shot = "$env:TEMP\makecleaner-smoke.png")
+# GUI smoke: sandbox copy (portable) with TEMP pointed at a fixture folder, only Temporary Files ticked;
+# clicks Analyze then Run Cleaner over the MakeKit automation pipe, checks the status line, saves a screenshot.
+# Never touches the real %TEMP%. Pure ASCII (PS 5.1).
+param([int]$Screen = 1, [string]$BinDir = '', [string]$Shot = "$env:TEMP\makecleaner-smoke.png")
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
-$bin = if ($BinDir) { $BinDir } else { Join-Path $root "src\MakeCleaner\bin\$Config\net10.0-windows" } # -BinDir: a published copy (tools\releasecheck.ps1)
-$exe = Join-Path $bin 'MakeCleaner.exe'
-. (Join-Path $PSScriptRoot 'screenpin.ps1')
-Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes, System.Drawing
-$AT = [System.Windows.Automation.AutomationElement]
+if (-not $BinDir) { $BinDir = Join-Path $root 'zig-out\bin' } # -BinDir: a published copy (tools\releasecheck.ps1)
+. (Join-Path $PSScriptRoot 'mc-auto.ps1')
 
-$fx = Join-Path ([IO.Path]::GetTempPath()) ('mc-smoke-' + [guid]::NewGuid().ToString('N'))
-New-Item -ItemType Directory -Force (Join-Path $fx 'sub') | Out-Null
-'a', 'b', 'sub\c' | ForEach-Object { [IO.File]::WriteAllBytes((Join-Path $fx "$_.tmp"), (New-Object byte[] 1024)) }
-Set-Content (Join-Path $bin 'portable.dat') '#PORTABLE#'
-# Only Temporary Files on: every other Windows-tab rule would touch real user data on Run Cleaner.
-$names = Select-String -Path (Join-Path $root 'src\MakeCleaner.Core\rules\Windows.ini') -Pattern '^\[(.+)\]$' | ForEach-Object { $_.Matches[0].Groups[1].Value }
-Set-Content (Join-Path $bin 'MakeCleaner.ini') (@('[Options]') + ($names | ForEach-Object { "$_=" + ($_ -eq 'Temporary Files') }))
-
-function Status($w) { $w.FindFirst([System.Windows.Automation.TreeScope]::Descendants, (New-Object System.Windows.Automation.PropertyCondition($AT::AutomationIdProperty, 'status'))).Current.Name }
-function Click($w, $id) { $w.FindFirst([System.Windows.Automation.TreeScope]::Descendants, (New-Object System.Windows.Automation.PropertyCondition($AT::AutomationIdProperty, $id))).GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke() }
-function WaitStatus($w, $prefix) { for ($i = 0; $i -lt 50; $i++) { $s = Status $w; if ($s -like "$prefix*") { return $s }; Start-Sleep -Milliseconds 200 }; throw "timeout waiting for '$prefix', last: $s" }
-
-# Browser items default to on and this smoke clicks Run Cleaner: point AppData at an empty folder so no real browser is found.
-$noApps = Join-Path ([IO.Path]::GetTempPath()) ('mc-smoke-noapps-' + [guid]::NewGuid().ToString('N'))
-New-Item -ItemType Directory -Force $noApps | Out-Null
-Start-ScreenPin -Screen $Screen -Exe $exe
-$old = $env:TEMP, $env:LOCALAPPDATA, $env:APPDATA
-$env:TEMP = $fx; $env:LOCALAPPDATA = $noApps; $env:APPDATA = $noApps
-$p = Start-Process $exe -PassThru
-$env:TEMP, $env:LOCALAPPDATA, $env:APPDATA = $old
+$sb = New-McSandbox $BinDir 'smoke'
+$app = $null
 try {
-    $w = $null
-    for ($i = 0; $i -lt 100 -and -not $w; $i++) { # up to 20 s: a cold WPF start can take >10 s
-        Start-Sleep -Milliseconds 200
-        $w = $AT::RootElement.FindFirst([System.Windows.Automation.TreeScope]::Children, (New-Object System.Windows.Automation.PropertyCondition($AT::ProcessIdProperty, $p.Id)))
-    }
-    if (-not $w) { throw 'window did not open' }
-    Click $w 'analyze'
-    $a = WaitStatus $w 'Analysis complete'
+    New-Item -ItemType Directory -Force (Join-Path $sb.Temp 'sub') | Out-Null
+    'a', 'b', 'sub\c' | ForEach-Object { [IO.File]::WriteAllBytes((Join-Path $sb.Temp "$_.tmp"), (New-Object byte[] 1024)) }
+    # Only Temporary Files on (= the fixture TEMP); browsers: AppData points at empty fixture folders.
+    Set-McIni $sb -On 'Temporary Files'
+
+    $app = Start-McApp $sb -Screen $Screen
+    Invoke-AutoClick $app 'Analyze##analyze'
+    $a = (Wait-McLabel $app 'Analysis complete*##status').label
     Write-Host "analyze: $a"
-    $r = $w.Current.BoundingRectangle
-    $bmp = New-Object System.Drawing.Bitmap ([int]$r.Width), ([int]$r.Height)
-    [System.Drawing.Graphics]::FromImage($bmp).CopyFromScreen([int]$r.X, [int]$r.Y, 0, 0, $bmp.Size)
-    $bmp.Save($Shot); Write-Host "screenshot: $Shot"
-    Click $w 'clean'
-    $c = WaitStatus $w 'Cleaning complete'
+    Save-McShot $app $Shot
+    Invoke-AutoClick $app 'Run Cleaner##clean'
+    $c = (Wait-McLabel $app 'Cleaning complete*##status').label
     Write-Host "clean: $c"
-    $left = @(Get-ChildItem $fx -Recurse -File).Count
+    $left = @(Get-ChildItem $sb.Temp -Recurse -File).Count
     Write-Host "fixture files left: $left"
-    $w.GetCurrentPattern([System.Windows.Automation.WindowPattern]::Pattern).Close()
-    $p.WaitForExit(5000) | Out-Null
-    $ini = Join-Path $bin 'MakeCleaner.ini'
-    Write-Host ("portable ini next to exe: " + (Test-Path $ini))
-    if ($a -notlike '*3 files*' -or $left -ne 0 -or -not (Test-Path $ini)) { throw 'SMOKE FAILED' }
+    $code = Close-McApp $app
+    Write-Host ("exit code: $code, portable ini next to exe: " + (Test-Path $sb.Ini))
+    if ($a -notlike '*: 3 files*' -or $left -ne 0 -or $code -ne 0 -or -not (Test-Path $sb.Ini)) { throw 'SMOKE FAILED' }
     Write-Host 'SMOKE OK'
 } finally {
-    Stop-ScreenPin
-    if (-not $p.HasExited) { $p.Kill() }
-    Remove-Item -Recurse -Force $fx, $noApps -ErrorAction SilentlyContinue
-    Remove-Item (Join-Path $bin 'portable.dat'), (Join-Path $bin 'MakeCleaner.ini') -ErrorAction SilentlyContinue
+    Remove-McSandbox $sb $app
 }

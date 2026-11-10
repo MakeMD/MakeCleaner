@@ -1,12 +1,13 @@
 //! MakeCleaner entry. "/auto" [+ "/shutdown"] (any case) -> headless schedule.auto, exit code 0/1, no window.
 //! Otherwise the GUI: left rail (Cleaner / Registry / Tools / Options), page on the right, thin footer.
-//! GUI phase: placeholder pages only.
 const std = @import("std");
 const kit = @import("kit");
 const settings_mod = @import("core/settings.zig");
 const cookies = @import("core/cookies.zig");
 const schedule = @import("core/schedule.zig");
-const Ctx = @import("ui/ctx.zig").Ctx;
+const ctx_mod = @import("ui/ctx.zig");
+const Ctx = ctx_mod.Ctx;
+const g1 = @import("ui/g1_common.zig");
 const ui_cleaner = @import("ui/cleaner.zig");
 const ui_registry = @import("ui/registry.zig");
 const ui_tools = @import("ui/tools.zig");
@@ -16,7 +17,7 @@ const im = kit.im;
 const App = kit.app.App;
 const pal = kit.app.palettes.cleaner;
 
-pub const version = "2.0.0";
+pub const version = ctx_mod.version;
 
 pub fn main(init: std.process.Init) !u8 {
     const gpa = init.gpa;
@@ -41,7 +42,7 @@ pub fn main(init: std.process.Init) !u8 {
     defer state.tools.deinit(&state.ctx);
     state.options = try ui_options.Page.init(&state.ctx);
     defer state.options.deinit(&state.ctx);
-    app.run(.{ .user = &state, .frame = frame });
+    app.run(.{ .user = &state, .frame = frame, .close_requested = closeRequested });
     return 0;
 }
 
@@ -67,7 +68,15 @@ const State = struct {
     registry: ui_registry.Page = undefined,
     tools: ui_tools.Page = undefined,
     options: ui_options.Page = undefined,
+    about: g1.Dialog = .{},
 };
+
+/// MainWindow.Closing: the Cleaner ticks are saved on close.
+fn closeRequested(app: *App) bool {
+    const s = app.userData(State);
+    s.cleaner.saveChecks(&s.ctx);
+    return true;
+}
 
 fn frame(app: *App) void {
     const s = app.userData(State);
@@ -132,8 +141,13 @@ fn frame(app: *App) void {
     const top = pos.y + body_h;
     im.ImDrawList_AddRectFilled(dl, .{ .x = pos.x, .y = top }, .{ .x = pos.x + size.x, .y = pos.y + size.y }, kit.app.colorU32(pal.surface));
     im.ImDrawList_AddLine(dl, .{ .x = pos.x, .y = top }, .{ .x = pos.x + size.x, .y = top }, kit.app.colorU32(pal.line));
-    const footer = "MakeCleaner " ++ version ++ " \u{00B7} no telemetry, no ads, no network access";
+    const footer = "MakeCleaner " ++ version ++ "  \u{00B7}  no telemetry, no ads, no network access";
     im.ImDrawList_AddTextImFontPtr(dl, app.fonts.regular, 12 * sc, .{ .x = pos.x + 12 * sc, .y = top + 6 * sc }, kit.app.colorU32(pal.muted), footer);
+    // About link on the right -> themed info dialog
+    const about_w = im.ImGui_CalcTextSize("About").x;
+    im.ImGui_SetCursorScreenPos(.{ .x = pos.x + size.x - about_w - 12 * sc, .y = top + 4 * sc });
+    if (im.ImGui_TextLink("About##about")) s.about.show(0, .info, "About MakeCleaner", ctx_mod.about_text, &.{"OK"});
+    _ = s.about.draw();
 }
 
 /// Draws `s` horizontally centered on `cx`; `y` is its top (or its middle for `.middle`).

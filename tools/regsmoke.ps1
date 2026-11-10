@@ -1,40 +1,25 @@
-# Registry GUI smoke: switches the main window to Registry (rail tile), runs Scan (read-only),
-# checks the status line and saves a screenshot. Never clicks Fix. Pure ASCII (PS 5.1).
-param([int]$Screen = 1, [string]$Config = 'Debug', [string]$BinDir = '', [string]$Shot = "$env:TEMP\makecleaner-regsmoke.png")
+# Registry GUI smoke: sandbox copy (portable), switches to Registry (rail tile), runs Scan for Issues (read-only),
+# checks the status line and saves a screenshot. Never clicks Fix. MakeKit automation pipe. Pure ASCII (PS 5.1).
+param([int]$Screen = 1, [string]$BinDir = '', [string]$Shot = "$env:TEMP\makecleaner-regsmoke.png")
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
-$bin = if ($BinDir) { $BinDir } else { Join-Path $root "src\MakeCleaner\bin\$Config\net10.0-windows" } # -BinDir: a published copy (tools\releasecheck.ps1)
-$exe = Join-Path $bin 'MakeCleaner.exe'
-. (Join-Path $PSScriptRoot 'screenpin.ps1')
-Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes, System.Drawing
-$AT = [System.Windows.Automation.AutomationElement]
-$TS = [System.Windows.Automation.TreeScope]
+if (-not $BinDir) { $BinDir = Join-Path $root 'zig-out\bin' } # -BinDir: a published copy (tools\releasecheck.ps1)
+. (Join-Path $PSScriptRoot 'mc-auto.ps1')
 
-function Find($w, $prop, $val) { $w.FindFirst($TS::Descendants, (New-Object System.Windows.Automation.PropertyCondition($prop, $val))) }
-function Wait($what, $fn) { for ($i = 0; $i -lt 150; $i++) { $r = & $fn; if ($r) { return $r }; Start-Sleep -Milliseconds 200 }; throw "timeout: $what" }
-
-Set-Content (Join-Path $bin 'portable.dat') '#PORTABLE#'
-Start-ScreenPin -Screen $Screen -Exe $exe
-$p = Start-Process $exe -PassThru
+$sb = New-McSandbox $BinDir 'regsmoke'
+$app = $null
 try {
-    $byPid = New-Object System.Windows.Automation.PropertyCondition($AT::ProcessIdProperty, $p.Id)
-    $main = Wait 'main window' { $AT::RootElement.FindFirst($TS::Children, $byPid) }
-    $kind = [System.Windows.Automation.ControlType]::ListItem # rail tile
-    $tab = Wait 'Registry tab' { $main.FindAll($TS::Descendants, (New-Object System.Windows.Automation.PropertyCondition($AT::NameProperty, 'Registry'))) |
-        Where-Object { $_.Current.ControlType -eq $kind } | Select-Object -First 1 }
-    $tab.GetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern).Select()
-    (Wait 'scan button' { Find $main $AT::AutomationIdProperty 'regscan' }).GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
-    $s = Wait 'scan' { $t = (Find $main $AT::AutomationIdProperty 'regstatus').Current.Name; if ($t -like 'Scan complete*') { $t } }
+    Set-McIni $sb  # registry categories keep their defaults; no cleaner rule is ticked
+    $app = Start-McApp $sb -Screen $Screen
+    Invoke-AutoClick $app 'Registry'
+    $null = Wait-AutoItem $app 'Scan for Issues##regscan' 5000
+    Invoke-AutoClick $app 'Scan for Issues##regscan'
+    $s = (Wait-McLabel $app 'Scan complete*##regstatus' 120000).label
     Write-Host "scan: $s"
-    $r = $main.Current.BoundingRectangle
-    $bmp = New-Object System.Drawing.Bitmap ([int]$r.Width), ([int]$r.Height)
-    [System.Drawing.Graphics]::FromImage($bmp).CopyFromScreen([int]$r.X, [int]$r.Y, 0, 0, $bmp.Size)
-    $bmp.Save($Shot); Write-Host "screenshot: $Shot"
-    $main.GetCurrentPattern([System.Windows.Automation.WindowPattern]::Pattern).Close()
-    $p.WaitForExit(5000) | Out-Null
+    Save-McShot $app $Shot
+    $code = Close-McApp $app
+    if ($code -ne 0) { throw "SMOKE FAILED (exit code $code)" }
     Write-Host 'SMOKE OK'
 } finally {
-    Stop-ScreenPin
-    if (-not $p.HasExited) { $p.Kill() }
-    Remove-Item (Join-Path $bin 'portable.dat'), (Join-Path $bin 'MakeCleaner.ini') -ErrorAction SilentlyContinue
+    Remove-McSandbox $sb $app
 }

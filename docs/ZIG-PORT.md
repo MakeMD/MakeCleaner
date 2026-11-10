@@ -110,6 +110,26 @@ Stub surface per package (see doc comments in each file for the C# member mirror
 - custom.reject also refuses a wildcard in the first segment under a drive (`C:\*`), beyond C#; engine keeps its
   own guard for the same pattern coming from a user winapp2.ini.
 
+## Test and release tooling (MC-T)
+
+- GUI smokes drive the exe over the MakeKit automation pipe (`..\MakeKit\tools\imgui-auto.ps1`), not UIA:
+  `tools\guismoke.ps1`, `guismoke-{apps,browsers,cleaner,cookies,dupes,incexc,tools,wiper}.ps1`, `autosmoke.ps1`,
+  `regsmoke.ps1`. Shared helpers in `tools\mc-auto.ps1` (no "smoke" in the name, so releasecheck does not run it).
+  Each smoke copies `-BinDir` (default `zig-out\bin`) into `%TEMP%\makecleaner-test-<tag>-<rand>\app` with
+  portable.dat, writes an ini with every Windows and Winapp2 rule off except its fixture ones, points
+  TEMP/TMP/APPDATA/LOCALAPPDATA at sandbox fixtures, prints `SMOKE OK`. `-Screen N` = `MAKEKIT_DISPLAY=\\.\DISPLAYN`.
+  Same scenarios/assertions as the legacy UIA scripts (git `HEAD~3:tools/`). screenpin.ps1 is gone (kit places windows).
+- Tri-state groups: the automation item has no "mixed" flag, so guismoke-cleaner reads a group as Indeterminate
+  when its box is unchecked while some of its items (Windows.ini `Section=`) are ticked.
+- `tools\release.ps1`: version from `src\main.zig` (`pub const version`, aliasing `ui\ctx.zig`; build.zig.zon
+  must agree) -> `zig build -Doptimize=ReleaseSafe -p dist\build` -> `dist\publish` (MakeCleaner.exe,
+  rules\{Winapp2.ini,Windows.ini,README.md}, THIRD-PARTY-NOTICES.txt; any other file fails) -> portable zip with
+  portable.dat -> ISCC -> `dist\MakeCleaner-Setup-<ver>.exe`. Older versions' zip/setup in dist\ are kept.
+- `tools\releasecheck.ps1`: newest portable zip -> PE import table check (fails on ws2_32, wsock32, wininet,
+  winhttp, urlmon, iphlpapi, *net*, dnsapi beyond DnsFlushResolverCache, any delay-load import), every smoke against
+  that copy, TCP/UDP poll of MakeCleaner processes in the sandboxes, new entries in %AppData%/%LocalAppData%/HKCU\Software.
+  Runtime LoadLibrary (dnsapi in special.zig, srclient in restorepoints.zig) is invisible to the import check.
+
 ## Open items per package
 
 - GUI: not ported (placeholder rail in main.zig). Needs Cleaner/Registry/Tools/Options pages incl. RegistryView /
