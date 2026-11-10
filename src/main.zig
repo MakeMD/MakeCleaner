@@ -6,6 +6,11 @@ const kit = @import("kit");
 const settings_mod = @import("core/settings.zig");
 const cookies = @import("core/cookies.zig");
 const schedule = @import("core/schedule.zig");
+const Ctx = @import("ui/ctx.zig").Ctx;
+const ui_cleaner = @import("ui/cleaner.zig");
+const ui_registry = @import("ui/registry.zig");
+const ui_tools = @import("ui/tools.zig");
+const ui_options = @import("ui/options.zig");
 
 const im = kit.im;
 const App = kit.app.App;
@@ -25,9 +30,17 @@ pub fn main(init: std.process.Init) !u8 {
     const args = try init.minimal.args.toSlice(arena);
     if (has(args[1..], "/auto")) return schedule.auto(gpa, io, &settings, exe_dir, has(args[1..], "/shutdown"));
 
-    var state: State = .{};
     const app = try App.init(gpa, .{ .title = "MakeCleaner", .size = .{ 1000, 680 }, .min_size = .{ 820, 560 }, .palette = pal });
     defer app.deinit();
+    var state: State = .{ .ctx = .{ .gpa = gpa, .io = io, .app = app, .settings = &settings, .exe_dir = exe_dir } };
+    state.cleaner = try ui_cleaner.Page.init(&state.ctx);
+    defer state.cleaner.deinit(&state.ctx);
+    state.registry = try ui_registry.Page.init(&state.ctx);
+    defer state.registry.deinit(&state.ctx);
+    state.tools = try ui_tools.Page.init(&state.ctx);
+    defer state.tools.deinit(&state.ctx);
+    state.options = try ui_options.Page.init(&state.ctx);
+    defer state.options.deinit(&state.ctx);
     app.run(.{ .user = &state, .frame = frame });
     return 0;
 }
@@ -47,7 +60,14 @@ const tiles = [_]struct { page: Page, icon: u21, label: [:0]const u8 }{
     .{ .page = .options, .icon = 0xE713, .label = "Options" },
 };
 
-const State = struct { page: Page = .cleaner };
+const State = struct {
+    page: Page = .cleaner,
+    ctx: Ctx,
+    cleaner: ui_cleaner.Page = undefined,
+    registry: ui_registry.Page = undefined,
+    tools: ui_tools.Page = undefined,
+    options: ui_options.Page = undefined,
+};
 
 fn frame(app: *App) void {
     const s = app.userData(State);
@@ -96,12 +116,15 @@ fn frame(app: *App) void {
         y += tile_h;
     }
 
-    // ---- page (placeholder until the GUI phase)
+    // ---- page
     im.ImGui_SetCursorScreenPos(.{ .x = pos.x + rail_w + 16 * sc, .y = pos.y + 14 * sc });
     if (im.ImGui_BeginChild("##page", .{ .x = size.x - rail_w - 32 * sc, .y = body_h - 26 * sc }, 0, im.ImGuiWindowFlags_NoBackground)) {
-        im.ImGui_PushFontFloat(app.fonts.bold, 20);
-        im.ImGui_TextUnformatted(tiles[@backingInt(s.page)].label.ptr);
-        im.ImGui_PopFont();
+        switch (s.page) {
+            .cleaner => s.cleaner.draw(&s.ctx),
+            .registry => s.registry.draw(&s.ctx),
+            .tools => s.tools.draw(&s.ctx),
+            .options => s.options.draw(&s.ctx),
+        }
     }
     im.ImGui_EndChild();
 
