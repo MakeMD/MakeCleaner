@@ -5,6 +5,7 @@ const std = @import("std");
 const kit = @import("kit");
 const Ctx = @import("ctx.zig").Ctx;
 const g = @import("g1_common.zig");
+const ui = @import("tools_ui.zig");
 const common = @import("../core/common.zig");
 const rules = @import("../core/rules.zig");
 const cleanpass = @import("../core/cleanpass.zig");
@@ -191,15 +192,15 @@ pub const Page = struct {
             p.lists_started = true; // Page sits at its final address now: safe to hand it to a worker
             p.lists_job.start(p, listsWorker) catch |e| p.say("Detecting applications failed: {t}", .{e});
         }
-        if (g.ended(&p.lists_job)) p.finishLists(ctx);
-        if (g.ended(&p.work)) p.finishWork(ctx);
+        if (ui.jobDone(&p.lists_job)) p.finishLists(ctx);
+        if (ui.jobDone(&p.work)) p.finishWork(ctx);
         if (p.work.isRunning() and p.phase == .analyzing) {
             p.bar_done = p.work.done.load(.acquire);
             p.bar_total = p.work.total.load(.acquire);
         }
         if (p.phase == .analyzing or p.phase == .cleaning) g.waitCursor(); // SetBusy: Cursor = Cursors.Wait
 
-        const s = g.scale();
+        const s = ui.scale();
         const avail = im.ImGui_GetContentRegionAvail();
         const left_w = 300 * s;
         if (g.beginPanel("##cleanLeft", .{ .x = left_w, .y = avail.y }, .{ .x = 6 * s, .y = 6 * s }, false)) p.drawTabs(ctx);
@@ -220,13 +221,13 @@ pub const Page = struct {
             .{ "Browsers##tabBrowsers", "##browsers", &p.brw_tree },
             .{ "Applications##tabApps", "##apps", &p.app_tree },
         };
-        const s = g.scale();
+        const s = ui.scale();
         const dl = im.ImGui_GetWindowDrawList();
         for (tabs, 0..) |t, i| {
             if (i > 0) im.ImGui_SameLineEx(0, 2 * s);
             const sel = p.tab == i;
-            im.ImGui_PushStyleColorImVec4(im.ImGuiCol_Button, if (sel) g.col(pal.accent_soft) else kit.app.color(0, 0));
-            im.ImGui_PushStyleColorImVec4(im.ImGuiCol_Text, g.col(if (sel) pal.accent_dark else pal.text));
+            im.ImGui_PushStyleColorImVec4(im.ImGuiCol_Button, if (sel) ui.col(pal.accent_soft) else kit.app.color(0, 0));
+            im.ImGui_PushStyleColorImVec4(im.ImGuiCol_Text, ui.col(if (sel) pal.accent_dark else pal.text));
             if (im.ImGui_Button(t[0])) p.tab = @intCast(i);
             im.ImGui_PopStyleColorEx(2);
             if (sel) {
@@ -265,7 +266,7 @@ pub const Page = struct {
     }
 
     fn drawRight(p: *Page, ctx: *Ctx) void {
-        const s = g.scale();
+        const s = ui.scale();
         // progress strip
         var sbuf: [256]u8 = undefined;
         const job_status = if (p.work.isRunning()) p.work.status(&sbuf) else "";
@@ -280,8 +281,8 @@ pub const Page = struct {
         // Summary / Files
         im.ImGui_Dummy(.{ .x = 0, .y = 6 * s });
         // WPF-sized radio (circle = font + 2 px, like kit.ui's checkbox) with a visible grey ring
-        im.ImGui_PushStyleColorImVec4(im.ImGuiCol_CheckMark, g.col(pal.accent)); // the theme's white mark is for filled boxes
-        im.ImGui_PushStyleColorImVec4(im.ImGuiCol_Border, g.col(pal.muted));
+        im.ImGui_PushStyleColorImVec4(im.ImGuiCol_CheckMark, ui.col(pal.accent)); // the theme's white mark is for filled boxes
+        im.ImGui_PushStyleColorImVec4(im.ImGuiCol_Border, ui.col(pal.muted));
         im.ImGui_PushStyleVarImVec2(im.ImGuiStyleVar_FramePadding, .{ .x = im.ImGui_GetStyle().*.FramePadding.x, .y = 1 });
         if (im.ImGui_RadioButton("Summary##viewSummary", !p.view_files) and p.view_files) {
             p.view_files = false;
@@ -306,7 +307,7 @@ pub const Page = struct {
             const wrap = @min(360 * s, table_w - 20 * s);
             const ts = im.ImGui_CalcTextSizeEx(hint_text, null, false, wrap);
             im.ImGui_SetCursorScreenPos(.{ .x = top.x + (table_w - ts.x) / 2, .y = top.y + (table_h - ts.y) / 2 });
-            g.label(hint_text, "hint", wrap, pal.muted);
+            ui.textItem("hint", hint_text, pal.muted, wrap, false);
         }
         im.ImGui_SetCursorScreenPos(.{ .x = top.x, .y = top.y + table_h + 12 * s });
 
@@ -319,10 +320,10 @@ pub const Page = struct {
     }
 
     fn drawResults(p: *Page, ctx: *Ctx, w: f32, h: f32) void {
-        const s = g.scale();
+        const s = ui.scale();
         const flags = g.list_flags | (if (p.lines.len == 0) im.ImGuiTableFlags_NoBordersInBody else 0); // hint sits on a clean area
-        im.ImGui_PushStyleColorImVec4(im.ImGuiCol_TableRowBg, g.col(pal.surface));
-        im.ImGui_PushStyleColorImVec4(im.ImGuiCol_TableRowBgAlt, g.col(pal.surface));
+        im.ImGui_PushStyleColorImVec4(im.ImGuiCol_TableRowBg, ui.col(pal.surface));
+        im.ImGui_PushStyleColorImVec4(im.ImGuiCol_TableRowBgAlt, ui.col(pal.surface));
         defer im.ImGui_PopStyleColorEx(2);
         if (!im.ImGui_BeginTableEx("##results", 3, flags, .{ .x = w, .y = h }, 0)) return;
         defer im.ImGui_EndTable();
@@ -594,16 +595,16 @@ pub const Page = struct {
         var out: std.ArrayList(Line) = .empty;
         var nb: [32]u8 = undefined;
         if (!p.view_files) {
-            for (p.pass.summary) |r| try add(a, &out, r.name, try a.printSentinel("{s} items", .{g.n0(&nb, r.items)}, 0), r.bytes, null);
+            for (p.pass.summary) |r| try add(a, &out, r.name, try a.printSentinel("{s} items", .{ui.n0(&nb, r.items)}, 0), r.bytes, null);
             if (p.pass.wipe()) try add(a, &out, "Wipe Free Space", "free space", 0, null);
             return out.items;
         }
         const files = p.pass.files;
         for (files[0..@min(files.len, max_file_lines)]) |f| try add(a, &out, f.path, "", f.size, try a.dupeSentinel(u8, f.path, 0));
-        if (files.len > max_file_lines) try add(a, &out, try a.print("... and {s} more files (see Summary for totals)", .{g.n0(&nb, files.len - max_file_lines)}), "", 0, null);
+        if (files.len > max_file_lines) try add(a, &out, try a.print("... and {s} more files (see Summary for totals)", .{ui.n0(&nb, files.len - max_file_lines)}), "", 0, null);
         for (p.pass.reg_keys[0..@min(p.pass.reg_keys.len, max_file_lines)]) |k| try add(a, &out, try a.print("{f}", .{k}), "registry", 0, null);
         for (p.pass.actions) |x| try add(a, &out, x.label, "", x.bytes, null);
-        for (p.pass.browser_rows) |r| try add(a, &out, try r.item.key(a), try a.printSentinel("{s} entries", .{g.n0(&nb, r.count)}, 0), 0, null);
+        for (p.pass.browser_rows) |r| try add(a, &out, try r.item.key(a), try a.printSentinel("{s} entries", .{ui.n0(&nb, r.count)}, 0), 0, null);
         return out.items;
     }
 

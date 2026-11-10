@@ -122,7 +122,7 @@ pub const CleanPass = struct {
 
         var done: usize = 0;
         const total = scanned.items.len + action_items.items.len;
-        var seen: rules.IgnoreCaseMap(void) = .empty;
+        var seen: common.IgnoreCaseMap(void) = .empty;
         var files: std.ArrayList(FileInfo) = .empty;
         var reg_keys: std.ArrayList(rules.RegKey) = .empty;
         var actions: std.ArrayList(special.Pending) = .empty;
@@ -217,7 +217,7 @@ pub const CleanPass = struct {
         const arena = p.arena.allocator();
         const passes: u8 = @intCast(std.math.clamp(p.settings.getInt(securedelete.setting_key, 0), 0, 255));
         // a skipped browser keeps its files; everything else goes as analyzed
-        var keep: rules.IgnoreCaseMap(void) = .empty;
+        var keep: common.IgnoreCaseMap(void) = .empty;
         for (p.scanned) |*r| if (skipped(skip, r.name)) {
             for (try engine.analyze(arena, io, r, &.{}, null)) |f| try keep.put(arena, f.path, {});
         };

@@ -30,7 +30,7 @@ pub const built_in_rules: []const u8 = @embedFile("windows_ini");
 /// Never sweeps a whole drive with RECURSE, never lets a wildcard right under a drive root reach system folders
 /// (targetDirs, stricter than C#); never follows junctions/symlinks out of the target.
 pub fn analyze(arena: Allocator, io: Io, rule: *const Rule, extra: []const rules.ExcludeKey, cancel: ?*const common.Cancel) ![]FileInfo {
-    var found: rules.IgnoreCaseMap(FileInfo) = .empty;
+    var found: common.IgnoreCaseMap(FileInfo) = .empty;
     const excludes = try fileExcludes(arena, io, rule.excludes.items, extra);
     const now = Io.Timestamp.now(io, .real).nanoseconds;
     const cutoff: ?i96 = if (rule.older_than_hours) |h| now - @as(i96, h) * std.time.ns_per_hour else null;

@@ -1,17 +1,17 @@
 # MC-G2 fix verification (pure ASCII): Tools + Options gaps of the MC-G2 review, in a sandbox.
 #   zig build; powershell -ExecutionPolicy Bypass -File tools\mc-g2-fix-test.ps1  -> 'MC-G2 FIX OK' + zig-out\shots\fix-MC-G2-*.png
-# Sandbox: exe copy in %TEMP%\makecleaner-test-mcg2fix-<rand>, portable.dat, every rule unticked,
-# TEMP/TMP/APPDATA/LOCALAPPDATA = fixture dirs. Destructive actions only touch fixtures created here:
+# Sandbox: mc-auto.ps1 (portable copy, every rule unticked, TEMP/APPDATA = fixture dirs, window on DISPLAY<Screen>).
+# Destructive actions only touch fixtures created here:
 #   - HKCU ...\Uninstall\MakeCleanerFixture-<rand> (its commands run marker.exe, a windowless exe built here)
 #   - HKCU ...\Run value MakeCleanerFixture-<rand> (+ its StartupApproved value), pointing at a missing exe
 #   - scheduled task "MakeCleaner Auto Clean" (Once, 2099) - skipped when the user already has one
 #   - files under the sandbox
 # Native file dialogs are answered with WM_SETTEXT + IDOK (no SendInput); they open on DISPLAY1 next to the app.
-param([string]$Bin = (Join-Path $PSScriptRoot '..\zig-out\bin'), [string]$Shots = (Join-Path $PSScriptRoot '..\zig-out\shots'),
+param([int]$Screen = 1, [string]$BinDir = (Join-Path $PSScriptRoot '..\zig-out\bin'), [string]$ShotDir = (Join-Path $PSScriptRoot '..\zig-out\shots'),
     [string]$Zig = "$env:LOCALAPPDATA\Programs\zig\0.17.1\zig.exe")
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version 2
-. (Join-Path $PSScriptRoot '..\..\MakeKit\tools\imgui-auto.ps1')
+. (Join-Path $PSScriptRoot 'mc-auto.ps1')
 
 Add-Type -TypeDefinition @'
 using System;
@@ -82,35 +82,18 @@ function TaskExists([string]$name) {
 }
 
 $tag = [guid]::NewGuid().ToString('N').Substring(0, 8)
-$root = Join-Path $env:TEMP "makecleaner-test-mcg2fix-$tag"
-$appDir = Join-Path $root 'app'
-New-Item -ItemType Directory -Force $appDir | Out-Null
-Copy-Item (Join-Path $Bin 'MakeCleaner.exe') $appDir
-Copy-Item (Join-Path $Bin 'rules') $appDir -Recurse
-[IO.File]::WriteAllText((Join-Path $appDir 'portable.dat'), '#PORTABLE#')
-$ini = New-Object System.Text.StringBuilder
-[void]$ini.Append("[Options]`r`n")
-foreach ($l in [IO.File]::ReadAllLines((Join-Path $PSScriptRoot '..\rules\Windows.ini'))) {
-    $t = $l.Trim(); if ($t -match '^\[(.+)\]$') { [void]$ini.Append("$($Matches[1])=False`r`n") }
-}
-foreach ($b in 'Google Chrome', 'Microsoft Edge', 'Brave', 'Vivaldi', 'Opera', 'Opera GX', 'Arc', 'Mozilla Firefox') {
-    foreach ($i in 'Internet Cache', 'Internet History', 'Download History', 'Last Download Location', 'Session', 'Saved Form Information', 'Saved Passwords', 'Compact Databases', 'Cookies') {
-        [void]$ini.Append("${b}: $i=False`r`n")
-    }
-}
-[void]$ini.Append("Custom Files and Folders=False`r`n")
-[IO.File]::WriteAllText((Join-Path $appDir 'MakeCleaner.ini'), $ini.ToString())
+$sb = New-McSandbox $BinDir 'mcg2fix'
+Set-McIni $sb
+$root = $sb.Root
 
 $fx = @{}
-foreach ($d in 'temp', 'appdata', 'localappdata', 'dups', 'dups\sub', 'dups2', 'inc', 'disk', 'disk2', 'out') { $p = Join-Path $root $d; New-Item -ItemType Directory -Force $p | Out-Null; $fx[$d] = $p }
+foreach ($d in 'dups', 'dups\sub', 'dups2', 'inc', 'disk', 'disk2', 'out') { $p = Join-Path $root $d; New-Item -ItemType Directory -Force $p | Out-Null; $fx[$d] = $p }
 $big = 'x' * 50000
 foreach ($f in 'dups\a.txt', 'dups\sub\a.txt', 'dups\b.log', 'dups\sub\b.log', 'dups2\a.txt', 'disk\one.txt', 'disk\two.jpg', 'disk\three.zip', 'disk2\four.txt', 'disk2\five.mp3') {
     [IO.File]::WriteAllText((Join-Path $root $f), $big)
     (Get-Item (Join-Path $root $f)).LastWriteTime = [datetime]'2026-01-02 03:04:05'
 }
 [IO.File]::WriteAllText((Join-Path $root 'cookies-in.txt'), "# fixture`r`nkeep.example.org`r`nHTTP://WWW.Foo.COM/path`r`nwww.Second.net`r`n")
-New-Item -ItemType Directory -Force $Shots | Out-Null
-
 # windowless marker.exe <file>: creates <file> (the fixture uninstaller / modify command)
 $markerC = Join-Path $root 'marker.c'
 $marker = Join-Path $root 'marker.exe'
@@ -141,13 +124,7 @@ $schedName = 'MakeCleaner Auto Clean'
 $schedPreexisting = TaskExists $schedName
 $app = $null
 $appPid = [uint32]0
-$shotList = @()
-function Shot([string]$name) {
-    $null = Invoke-AutoFrames $app 3
-    $bmp = Join-Path $root "$name.bmp"
-    $null = Save-AutoScreenshot $app $bmp
-    $script:shotList += $bmp
-}
+function Shot([string]$name) { Save-McShot $app (Join-Path $ShotDir "$name.png") }
 function Click([string]$l) { Invoke-AutoClick $app $l }
 function Items { @(Get-AutoItems $app) }
 function Item([string]$suffix) { $i = @(Items | Where-Object { $_.label.EndsWith($suffix) }); if ($i.Count -ne 1) { throw "expected one item ending '$suffix', got $($i.Count)" }; $i[0] }
@@ -164,11 +141,6 @@ function WaitText([string]$suffix, [string]$pattern, [int]$ms = 10000) {
 function WaitFile([string]$path, [int]$ms = 10000) {
     $deadline = (Get-Date).AddMilliseconds($ms)
     while (-not (Test-Path $path)) { if ((Get-Date) -gt $deadline) { throw "timeout waiting for $path" }; Start-Sleep -Milliseconds 100 }
-}
-function SetText([string]$l, [string]$text) {
-    Click $l; Invoke-AutoKey $app 'ctrl+A'; Invoke-AutoKey $app 'Delete'
-    if ($text.Length -gt 0) { Invoke-AutoType $app $text }
-    Invoke-AutoKey $app 'Tab'
 }
 function Check([bool]$cond, [string]$what) { if (-not $cond) { throw "CHECK FAILED: $what" }; Write-Host "ok  $what" }
 # Clicks a button that opens a native file dialog, then answers it with `text` + OK.
@@ -219,7 +191,7 @@ try {
     Set-ItemProperty $uninstKey UninstallString "`"$marker`" `"$runMarker`""
     Set-ItemProperty $uninstKey ModifyPath "`"$marker`" `"$modMarker`""
     New-ItemProperty $runKey $fxName -Value "`"$root\missing-fixture.exe`" --fixture" -PropertyType String -Force | Out-Null
-    $app = Start-AutoApp -Exe (Join-Path $appDir 'MakeCleaner.exe') -Env @{ TEMP = $fx['temp']; TMP = $fx['temp']; APPDATA = $fx['appdata']; LOCALAPPDATA = $fx['localappdata'] }
+    $app = Start-McApp $sb -Screen $Screen
     $appPid = [uint32]$app.Process.Id
     Write-Host "pid $appPid sandbox $root"
 
@@ -227,7 +199,7 @@ try {
     # ---- Uninstall: GridView table (scroll, resize, tooltip, cells as items) + fixture Run/Repair/Change/Delete entry
     $null = WaitText '##uninstallCount' '^\d+ programs##' 15000
     Shot 'fix-MC-G2-uninstall-table'
-    SetText '##uninstallSearch' $fxName
+    Set-McText $app '##uninstallSearch' $fxName
     $null = WaitText '##uninstallCount' '^1 programs##'
     $row = @(Items | Where-Object { $_.label -like "$fxName test program##u*" -and $_.label -match '##u\d+$' })
     Check ($row.Count -eq 1) 'fixture program row'
@@ -260,7 +232,7 @@ try {
     Click 'Delete entry'
     $null = WaitText '##uninstallCount' '^0 programs##'
     Check (-not (Test-Path $uninstKey)) 'Delete entry removed the fixture key'
-    SetText '##uninstallSearch' ''
+    Set-McText $app '##uninstallSearch' ''
 
     # ---- Startup: tabs fill as they are read; fixture Run value Disable / Enable / Delete
     Click 'Startup##toolsNav1'
@@ -325,8 +297,8 @@ try {
     # ---- Duplicate Finder: Browse appends "; folder"; group headers + checkboxes readable; delete on the job
     Click 'Duplicate Finder##toolsNav2'
     $null = Wait-AutoItem $app '##dupInclude' 3000
-    SetText '##dupInclude' $fx['dups']
-    SetText '##dupExclude' ''
+    Set-McText $app '##dupInclude' $fx['dups']
+    Set-McText $app '##dupExclude' ''
     DialogOk 'Browse...##dupIncludeBrowse' $fx['dups2']
     Click 'Search##dupSearch'
     $st = WaitText '##dupStatus' '^Found ' 15000
@@ -354,7 +326,7 @@ try {
     # ---- Disk Analyzer: Browse appends, categories readable, delete on the job, Save Report OK path
     Click 'Disk Analyzer##toolsNav3'
     $null = Wait-AutoItem $app '##daRoots' 3000
-    SetText '##daRoots' $fx['disk']
+    Set-McText $app '##daRoots' $fx['disk']
     DialogOk 'Browse...##daBrowse' $fx['disk2']
     Click 'Analyze##daScan'
     $st = WaitText '##daStatus' '^Analysis complete' 15000
@@ -396,10 +368,10 @@ try {
     Click 'Cookies##optionsNav3'
     $st = WaitText '##cookieStatus' 'domains with cookies' 20000
     $nFound = [int]($st -replace ' domains.*', '')
-    SetText '##cookieDomain' 'HTTP://WWW.Foo.COM/path'
+    Set-McText $app '##cookieDomain' 'HTTP://WWW.Foo.COM/path'
     Click 'Add##cookieAdd'
     $null = WaitText '##cookieStatus' '^Enter a domain like'
-    SetText '##cookieDomain' '*.baz.net'
+    Set-McText $app '##cookieDomain' '*.baz.net'
     Click 'Add##cookieAdd'
     $null = WaitText '##cookieStatus' '^Enter a domain like'
     DialogOk 'Import...##cookieImport' (Join-Path $root 'cookies-in.txt')
@@ -424,7 +396,7 @@ try {
         Write-Host 'skip: the user has a scheduled task of the same name'
     } else {
         Click '##schedKind'; Click '##schedKind0'
-        SetText '##schedAt' '2099-01-01 12:00'
+        Set-McText $app '##schedAt' '2099-01-01 12:00'
         Click 'Create task##schedCreate'
         $st = WaitText '##schedStatus' '^Scheduled cleaning is on' 15000
         Check ($st -like 'Scheduled cleaning is on. Next run: 2099-01-01 12:00##*') "task created ($st)"
@@ -449,17 +421,12 @@ try {
     Place $rc.Left $rc.Top ($rc.Right - $rc.Left) ($rc.Bottom - $rc.Top)
     $ok = $true
 } finally {
-    if ($app) { $code = Stop-AutoApp $app; Write-Host "exit code $code" }
-    foreach ($b in $shotList) {
-        $png = Join-Path $Shots ([IO.Path]::GetFileNameWithoutExtension($b) + '.png')
-        & py -3.10 -c "import sys; from PIL import Image; Image.open(sys.argv[1]).save(sys.argv[2])" $b $png
-    }
-    # fixtures
+    # fixtures (Remove-McSandbox below also stops the app if it still runs)
     if (Test-Path $uninstKey) { Remove-Item -Recurse -Force $uninstKey }
     Remove-ItemProperty $runKey -Name $fxName -ErrorAction SilentlyContinue
     Remove-ItemProperty $approvedKey -Name $fxName -ErrorAction SilentlyContinue
     if (-not $schedPreexisting -and (TaskExists $schedName)) { $ErrorActionPreference = 'Continue'; schtasks /delete /tn $schedName /f 2>&1 | Out-Null }
-    Remove-Item -Recurse -Force $root
+    Remove-McSandbox $sb $app
     Write-Host "sandbox and fixtures removed"
 }
 if ($ok) { Write-Host 'MC-G2 FIX OK' } else { Write-Host 'MC-G2 FIX FAILED'; exit 1 }

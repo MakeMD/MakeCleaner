@@ -46,8 +46,7 @@ pub const View = struct {
     n_targets: usize = 0,
     entire: bool = false,
     n_passes: u8 = 1,
-    progress_buf: [300]u8 = undefined,
-    progress_len: usize = 0,
+    progress: ui.Text(300) = .{},
     prompt_open: bool = false,
     prompt: ui.Buf(32) = .{},
     dlg: ui.Dialog = .{},
@@ -65,11 +64,6 @@ pub const View = struct {
         v.job.join();
         v.drives.deinit(ctx.gpa);
         ctx.gpa.destroy(v);
-    }
-
-    fn gb(buf: []u8, b: u64) []const u8 {
-        const g = @round(@as(f64, @floatFromInt(b)) / @as(f64, 1 << 30) * 10) / 10;
-        return if (g == @trunc(g)) std.mem.print(buf, "{d} GB", .{@as(u64, @intFromFloat(g))}) catch "" else std.mem.print(buf, "{d:.1} GB", .{g}) catch "";
     }
 
     /// Ready Fixed/Removable drives: "X:\ (System) [SSD]   label   FS   N GB free of M GB".
@@ -97,11 +91,11 @@ pub const View = struct {
             const f8 = fb[0..std.unicode.wtf16LeToWtf8(&fb, std.mem.sliceTo(&fs, 0))];
             var g1: [32]u8 = undefined;
             var g2: [32]u8 = undefined;
+            const free_gb = ui.fmt01(&g1, @as(f64, @floatFromInt(free.QuadPart)) / (1 << 30));
+            const total_gb = ui.fmt01(&g2, @as(f64, @floatFromInt(total.QuadPart)) / (1 << 30));
             const is_sys = if (sys) |p| common.eqlIgnoreCase(p, root) else false;
-            const txt = std.mem.print(&d.text, "{s}{s}{s}   {s}   {s}   {s} free of {s}", .{
-                root,                    if (is_sys) " (System)" else "", if (d.ssd == true) " [SSD]" else "",
-                l8,                      f8,                              gb(&g1, free.QuadPart),
-                gb(&g2, total.QuadPart),
+            const txt = std.mem.print(&d.text, "{s}{s}{s}   {s}   {s}   {s} GB free of {s} GB", .{
+                root, if (is_sys) " (System)" else "", if (d.ssd == true) " [SSD]" else "", l8, f8, free_gb, total_gb,
             }) catch d.text[0..0];
             d.text_len = txt.len;
             v.drives.append(gpa, d) catch return;
@@ -110,11 +104,6 @@ pub const View = struct {
 
     fn entireMode(v: *const View) bool {
         return v.mode == 1;
-    }
-
-    fn setProgress(v: *View, comptime fmt: []const u8, args: anytype) void {
-        const t: []const u8 = std.mem.print(&v.progress_buf, fmt, args) catch &v.progress_buf;
-        v.progress_len = t.len;
     }
 
     fn targetNames(v: *View, buf: []u8) []const u8 {
@@ -133,7 +122,7 @@ pub const View = struct {
             v.targets[v.n_targets] = d.root;
             v.n_targets += 1;
         };
-        if (v.n_targets == 0) return v.setProgress("Select at least one drive.", .{});
+        if (v.n_targets == 0) return v.progress.set("Select at least one drive.", .{});
         v.n_passes = methods[@intCast(v.passes)].passes;
         v.entire = v.entireMode();
         var nb: [128]u8 = undefined;
@@ -162,7 +151,7 @@ pub const View = struct {
 
     fn startJob(v: *View) void {
         if (v.job.thread != null) return;
-        v.setProgress("", .{});
+        v.progress.set("", .{});
         v.job.start(v, worker) catch {};
     }
 
@@ -193,16 +182,16 @@ pub const View = struct {
         if (ui.jobDone(&v.job)) {
             var eb: [256]u8 = undefined;
             if (v.job.cancelled()) {
-                v.setProgress("Cancelled. Temporary wipe files removed.", .{});
+                v.progress.set("Cancelled. Temporary wipe files removed.", .{});
             } else if (v.job.errorText(&eb)) |e| {
-                v.setProgress("Failed: {s}", .{e});
-            } else v.setProgress("Drive Wiper complete.", .{});
+                v.progress.set("Failed: {s}", .{e});
+            } else v.progress.set("Drive Wiper complete.", .{});
             v.refreshDrives(ctx.gpa); // a format changes label / file system / free space
         }
         if (v.job.isRunning()) {
             var sb: [256]u8 = undefined;
             const st = v.job.status(&sb);
-            v.setProgress("{s}", .{st});
+            v.progress.set("{s}", .{st});
         }
         if (v.dlg.draw()) |ans| switch (ans.tag) {
             tag_free => if (ans.button == 0) v.startJob(),
@@ -257,7 +246,7 @@ pub const View = struct {
         im.ImGui_SetCursorPosY(im.ImGui_GetCursorPosY() + 4 * s);
         ui.statusIn("wipeWarning", wb[0..ww.end], ui.pal.danger, im.ImGui_GetContentRegionAvail().x);
         const btns = 90 * s + 8 * s + 90 * s;
-        ui.statusIn("wipeProgress", v.progress_buf[0..v.progress_len], ui.pal.text, im.ImGui_GetContentRegionAvail().x - btns - 8 * s);
+        ui.statusIn("wipeProgress", v.progress.slice(), ui.pal.text, im.ImGui_GetContentRegionAvail().x - btns - 8 * s);
         im.ImGui_SameLineEx(0, 8 * s);
         if (ui.primary("Wipe##wipe", !busy)) v.run();
         im.ImGui_SameLineEx(0, 8 * s);

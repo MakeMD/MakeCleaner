@@ -6,6 +6,7 @@ const std = @import("std");
 const kit = @import("kit");
 const common = @import("common.zig");
 const rules = @import("rules.zig");
+const rules_fs = @import("rules_fs.zig");
 const cookies = @import("cookies.zig");
 pub const c = @import("sqlite"); // SQLite 3.54.1 C API (third_party/sqlite, translated by build.zig)
 
@@ -188,7 +189,7 @@ pub fn detect(arena: Allocator, io: Io, browsers: ?[]const Browser) ![]BrowserIt
 pub fn chromiumProfiles(arena: Allocator, io: Io, b: *const Browser) ![]const []const u8 {
     var out: std.ArrayList([]const u8) = .empty;
     for (try b.roots(arena, io)) |root| {
-        if (isFile(io, try fs_path.join(arena, &.{ root, "Preferences" }))) try out.append(arena, root);
+        if (rules_fs.isFile(try fs_path.join(arena, &.{ root, "Preferences" }))) try out.append(arena, root);
         var dir = Io.Dir.cwd().openDir(io, root, .{ .iterate = true }) catch continue; // SafeDirs
         defer dir.close(io);
         var it = dir.iterate();
@@ -197,7 +198,7 @@ pub fn chromiumProfiles(arena: Allocator, io: Io, b: *const Browser) ![]const []
             const n = e.name;
             if (!(std.mem.eql(u8, n, "Default") or std.mem.startsWith(u8, n, "Profile ") or std.mem.eql(u8, n, "Guest Profile"))) continue;
             const d = try fs_path.join(arena, &.{ root, n });
-            if (isFile(io, try fs_path.join(arena, &.{ d, "Preferences" }))) try out.append(arena, d);
+            if (rules_fs.isFile(try fs_path.join(arena, &.{ d, "Preferences" }))) try out.append(arena, d);
         }
     }
     return out.items;
@@ -226,7 +227,7 @@ pub fn firefoxProfiles(arena: Allocator, io: Io, b: *const Browser) ![]const []c
                         std.mem.replaceScalar(u8, rel, '/', '\\');
                         break :blk try fs_path.resolveAlloc(arena, &.{try fs_path.join(arena, &.{ root, rel })}); // GetFullPath(Join)
                     } else prof.?;
-                    if (isDir(io, full)) try out.append(arena, full);
+                    if (rules_fs.isDir(full)) try out.append(arena, full);
                 }
                 in_profile = common.startsWithIgnoreCase(line, "[Profile");
                 prof = null;
@@ -400,7 +401,7 @@ const Job = struct {
             // apply=false counts rows; apply=true deletes them. Missing files/tables are skipped.
             .tables, .sql => for (j.profiles) |p| {
                 const f = try fs_path.join(a, &.{ p, j.file });
-                if (!isFile(io, f)) continue;
+                if (!rules_fs.isFile(f)) continue;
                 const db = open(a, f, apply) orelse continue;
                 defer _ = c.sqlite3_close_v2(db);
                 total += if (j.kind == .tables) tx(db, apply, emptyTables, .{ db, j.names, apply }) else tx(db, apply, countDelete, .{ db, j.count, j.delete, apply });
@@ -506,7 +507,7 @@ pub fn cookieDbs(arena: Allocator, io: Io, b: *const Browser) ![]CookieDb {
                 .{ .db = try fs_path.join(arena, &.{ p, "Cookies" }), .table = "cookies", .column = "host_key" },
             },
         };
-        for (cands[0..if (b.kind == .firefox) 1 else 2]) |d| if (isFile(io, d.db)) try out.append(arena, d);
+        for (cands[0..if (b.kind == .firefox) 1 else 2]) |d| if (rules_fs.isFile(d.db)) try out.append(arena, d);
     }
     return out.items;
 }
@@ -578,7 +579,7 @@ fn copyForRead(a: Allocator, io: Io, db: []const u8) ?[]const u8 {
 
 fn copyInto(a: Allocator, io: Io, db: []const u8, tmp: []const u8) !void {
     for ([_][]const u8{ db, try a.print("{s}-wal", .{db}) }) |f| {
-        if (!isFile(io, f)) continue;
+        if (!rules_fs.isFile(f)) continue;
         // Dir.openFile opens with FILE_SHARE_READ|WRITE|DELETE (std Io/Threaded.zig dirOpenFileWtf16 passes
         // FILE.SHARE.VALID_FLAGS), like C# FileShare.ReadWrite|Delete: the running browser keeps writing.
         // A handle that refuses sharing ends in error.FileBusy (after std's ~4 s retry) -> the db is skipped.
@@ -711,17 +712,6 @@ fn prefsRemove(a: Allocator, io: Io, file: []const u8, apply: bool, pref: []cons
 }
 
 // ---------------------------------------------------------------- files / processes
-
-/// File.Exists: a file (not a folder).
-fn isFile(io: Io, p: []const u8) bool {
-    const st = Io.Dir.cwd().statFile(io, p, .{}) catch return false;
-    return st.kind == .file;
-}
-
-fn isDir(io: Io, p: []const u8) bool {
-    const st = Io.Dir.cwd().statFile(io, p, .{}) catch return false;
-    return st.kind == .directory;
-}
 
 const TH32CS_SNAPPROCESS = 0x2;
 const PROCESSENTRY32W = extern struct {

@@ -1,35 +1,15 @@
 //! MC-G1 shared GUI helpers: the themed Dialog (legacy Dialog.cs), the progress strip of Cleaner/Registry,
-//! automation-readable text, buttons (Theme.xaml: flat, min 110x32, Primary = accent), N0 numbers and the
-//! settings snapshot handed to workers.
+//! buttons (Theme.xaml: flat, min 110x32, Primary = accent) and the settings snapshot handed to workers.
+//! Text items, N0, colours and job polling live in tools_ui.zig.
 const std = @import("std");
 const kit = @import("kit");
 const settings_mod = @import("../core/settings.zig");
+const ui = @import("tools_ui.zig");
 
 const im = kit.im;
 const pal = kit.app.palettes.cleaner;
-
-pub fn scale() f32 {
-    return if (kit.app.current()) |a| a.scale() else 1;
-}
-
-pub fn col(rgb: u32) im.ImVec4 {
-    return kit.app.color(rgb, 1);
-}
-
-/// Text that tests can read: an invisible item labelled "<text>##<id>" with the text drawn on top
-/// (plain TextUnformatted is not an item, notes K8). `wrap_w` > 0 wraps at that width.
-pub fn label(text: []const u8, id: []const u8, wrap_w: f32, rgb: u32) void {
-    const font = im.ImGui_GetFont();
-    const px = im.ImGui_GetFontSize();
-    const end = text.ptr + text.len;
-    const sz = im.ImGui_CalcTextSizeEx(text.ptr, end, false, if (wrap_w > 0) wrap_w else -1);
-    const pos = im.ImGui_GetCursorScreenPos();
-    var buf: [1024]u8 = undefined;
-    const shown = text[0..@min(text.len, 900)];
-    const lbl = std.mem.printSentinel(&buf, "{s}##{s}", .{ shown, id }, 0) catch return;
-    _ = im.ImGui_InvisibleButton(lbl.ptr, .{ .x = @max(1, sz.x), .y = @max(px, sz.y) }, 0);
-    im.ImDrawList_AddTextImFontPtrEx(im.ImGui_GetWindowDrawList(), font, px, pos, kit.app.colorU32(rgb), text.ptr, end, if (wrap_w > 0) wrap_w else 0, null);
-}
+const scale = ui.scale;
+const col = ui.col;
 
 /// Theme.xaml button: min 110 x 32, Primary = accent fill + white bold text; disabled = faded.
 pub fn button(lbl: [*:0]const u8, enabled: bool, primary: bool) bool {
@@ -40,14 +20,9 @@ pub fn buttonMin(lbl: [*:0]const u8, enabled: bool, primary: bool, min_w: f32) b
     const s = scale();
     const tw = im.ImGui_CalcTextSizeEx(lbl, null, true, -1).x;
     if (!enabled) im.ImGui_BeginDisabled(true);
-    if (primary) {
-        im.ImGui_PushStyleColorImVec4(im.ImGuiCol_Button, col(pal.accent));
-        im.ImGui_PushStyleColorImVec4(im.ImGuiCol_ButtonHovered, col(pal.accent_dark));
-        im.ImGui_PushStyleColorImVec4(im.ImGuiCol_ButtonActive, col(pal.accent_dark));
-        im.ImGui_PushStyleColorImVec4(im.ImGuiCol_Text, col(0xFFFFFF));
-    }
+    if (primary) ui.pushPrimary();
     const pressed = im.ImGui_ButtonEx(lbl, .{ .x = @max(min_w * s, tw + 32 * s), .y = 32 * s });
-    if (primary) im.ImGui_PopStyleColorEx(4);
+    if (primary) ui.popPrimary();
     if (!enabled) im.ImGui_EndDisabled();
     return pressed and enabled;
 }
@@ -90,7 +65,7 @@ pub fn progressStrip(panel_id: [*:0]const u8, status: []const u8, status_id: []c
         const avail = im.ImGui_GetContentRegionAvail().x;
         const y0 = im.ImGui_GetCursorPosY();
         im.ImGui_PushFontFloat(boldFont(), 0);
-        label(status, status_id, @max(40, avail - bw - 12 * s), pal.text);
+        ui.textItem(status_id, status, pal.text, @max(40, avail - bw - 12 * s), false);
         im.ImGui_PopFont();
         const y1 = im.ImGui_GetCursorPosY();
         im.ImGui_SetCursorPos(.{ .x = im.ImGui_GetCursorPosX() + avail - bw, .y = y0 });
@@ -106,7 +81,7 @@ pub fn progressStrip(panel_id: [*:0]const u8, status: []const u8, status_id: []c
         im.ImGui_PushFontFloat(null, im.ImGui_GetStyle().*.FontSizeBase * 0.8);
         const pw = im.ImGui_CalcTextSizeEx(pct_text.ptr, pct_text.ptr + pct_text.len, false, -1).x;
         im.ImGui_SetCursorPosX(im.ImGui_GetCursorPosX() + @max(0, tw - pw));
-        label(pct_text, text_id, 0, pal.muted);
+        ui.textItem(text_id, pct_text, pal.muted, 0, false);
         im.ImGui_PopFont();
     }
     endPanel();
@@ -129,32 +104,6 @@ pub fn boldFont() ?*im.ImFont {
 pub fn pctText(buf: []u8, done: u64, total: u64) []const u8 {
     if (total == 0) return "";
     return std.mem.print(buf, "{d}% ({d} of {d})", .{ @min(done, total) * 100 / total, done, total }) catch "";
-}
-
-/// .NET "N0" (en-US): 1234567 -> "1,234,567".
-pub fn n0(buf: []u8, n: u64) []const u8 {
-    var tmp: [32]u8 = undefined;
-    const digits = std.mem.print(&tmp, "{d}", .{n}) catch return "";
-    var o: usize = 0;
-    for (digits, 0..) |c, i| {
-        if (i > 0 and (digits.len - i) % 3 == 0) {
-            if (o >= buf.len) return buf[0..o];
-            buf[o] = ',';
-            o += 1;
-        }
-        if (o >= buf.len) return buf[0..o];
-        buf[o] = c;
-        o += 1;
-    }
-    return buf[0..o];
-}
-
-test n0 {
-    var b: [32]u8 = undefined;
-    try std.testing.expectEqualStrings("0", n0(&b, 0));
-    try std.testing.expectEqualStrings("999", n0(&b, 999));
-    try std.testing.expectEqualStrings("1,000", n0(&b, 1000));
-    try std.testing.expectEqualStrings("12,345,678", n0(&b, 12345678));
 }
 
 /// Copy of `s` for a worker thread (Settings is not thread-safe; the UI keeps writing the original).
@@ -233,7 +182,7 @@ pub const Dialog = struct {
         im.ImGui_PopFont();
         im.ImGui_SameLineEx(0, 16 * s);
         im.ImGui_PushFontFloat(null, 14 * 16.0 / 13.0); // FontSize 14 of a 13 px WPF base
-        label(d.text[0..d.text_len], "dialogText", im.ImGui_GetContentRegionAvail().x, pal.text);
+        ui.textItem("dialogText", d.text[0..d.text_len], pal.text, im.ImGui_GetContentRegionAvail().x, false);
         im.ImGui_PopFont();
 
         // footer band: Bg + top line, buttons right-aligned
@@ -266,8 +215,3 @@ pub const Dialog = struct {
         return .{ .tag = d.tag, .index = r };
     }
 };
-
-/// A started job whose worker returned and was not joined yet (isFinished alone stays true after join).
-pub fn ended(job: *kit.jobs.Job) bool {
-    return job.thread != null and job.isFinished();
-}

@@ -115,8 +115,7 @@ const Schedule = struct {
     kind: c_int = 1,
     at: ui.Buf(32) = .{},
     shutdown: bool = false,
-    status_buf: [300]u8 = undefined,
-    status_len: usize = 0,
+    status: ui.Text(300) = .{},
     job: kit.jobs.Job = .{},
     // job input
     op: enum { describe, create, delete } = .describe,
@@ -142,11 +141,6 @@ const Schedule = struct {
         p.at.set(std.mem.print(&b, "{d:0>4}-{d:0>2}-{d:0>2} 12:00", .{ t.wYear, t.wMonth, t.wDay }) catch "");
         p.start(.describe);
         return p;
-    }
-
-    fn setStatus(p: *Schedule, comptime fmt: []const u8, args: anytype) void {
-        const t: []const u8 = std.mem.print(&p.status_buf, fmt, args) catch &p.status_buf;
-        p.status_len = t.len;
     }
 
     fn start(p: *Schedule, op: @FieldType(Schedule, "op")) void {
@@ -177,7 +171,7 @@ const Schedule = struct {
         const s = ui.scale();
         if (ui.jobDone(&p.job)) {
             var sb: [256]u8 = undefined;
-            p.setStatus("{s}", .{p.job.status(&sb)});
+            p.status.set("{s}", .{p.job.status(&sb)});
         }
         const busy = p.job.isRunning();
         ui.title(ctx, "Schedule");
@@ -198,12 +192,12 @@ const Schedule = struct {
         if (ui.button("Remove task##schedRemove", !busy)) p.start(.delete);
         im.ImGui_Dummy(.{ .x = 0, .y = 6 * s });
         im.ImGui_PushFontFloat(ctx.app.fonts.bold, 0);
-        ui.status("schedStatus", p.status_buf[0..p.status_len], ui.pal.text);
+        ui.status("schedStatus", p.status.slice(), ui.pal.text);
         im.ImGui_PopFont();
     }
 
     fn createTask(p: *Schedule) void {
-        p.run_at = parseAt(p.at.trimmed()) orelse return p.setStatus("Start time format: yyyy-MM-dd HH:mm", .{});
+        p.run_at = parseAt(p.at.trimmed()) orelse return p.status.set("Start time format: yyyy-MM-dd HH:mm", .{});
         p.run_kind = @fromBackingInt(@as(u2, @intCast(p.kind)));
         p.run_shutdown = p.shutdown;
         p.start(.create);

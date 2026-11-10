@@ -4,6 +4,7 @@ const std = @import("std");
 const kit = @import("kit");
 const Ctx = @import("ctx.zig").Ctx;
 const ui = @import("tools_ui.zig");
+const rules_fs = @import("../core/rules_fs.zig");
 const duplicates = @import("../core/duplicates.zig");
 const disk = @import("../core/diskanalyzer.zig");
 const engine = @import("../core/engine.zig");
@@ -30,8 +31,7 @@ pub const View = struct {
     files: std.ArrayList(u32) = .empty,
     picked: std.AutoHashMapUnmanaged(u32, void) = .empty,
     anchor: ?usize = null,
-    status_buf: [256]u8 = undefined,
-    status_len: usize = 0,
+    status: ui.Text(256) = .{},
     seen_at: u64 = 0,
     /// Bytes per category of `report` (summed once per analyze/delete, not every frame).
     cat_bytes: [disk.categories.len]u64 = @splat(0),
@@ -77,19 +77,14 @@ pub const View = struct {
         v.roots.set(buf[0..n]);
     }
 
-    fn setStatus(v: *View, comptime fmt: []const u8, args: anytype) void {
-        const t: []const u8 = std.mem.print(&v.status_buf, fmt, args) catch &v.status_buf;
-        v.status_len = t.len;
-    }
-
     fn analyze(v: *View) void {
         if (v.job.thread != null) return;
         _ = v.next_arena.reset(.free_all);
         const a = v.next_arena.allocator();
         const text = a.dupe(u8, v.roots.slice()) catch return;
         v.where = duplicates.scan.splitPaths(a, text) catch return;
-        v.seen_at = ui.nowMs();
-        v.setStatus("Scanning...", .{});
+        v.seen_at = kit.w.GetTickCount64();
+        v.status.set("Scanning...", .{});
         v.job.start(v, worker) catch {};
     }
 
@@ -131,7 +126,7 @@ pub const View = struct {
         while (it.next()) |k| list.append(gpa, v.report.?.by_category[v.cat][k.*]) catch return list.deinit(gpa);
         v.del_files = list.toOwnedSlice(gpa) catch return list.deinit(gpa);
         v.deleting = true;
-        v.setStatus("Deleting {d} files...", .{v.del_files.len});
+        v.status.set("Deleting {d} files...", .{v.del_files.len});
         v.job.start(v, delWorker) catch {
             v.deleting = false;
             gpa.free(v.del_files);
@@ -147,7 +142,7 @@ pub const View = struct {
         v.del_result = engine.clean(gpa, v.io, v.del_files, 0);
         var gone: std.StringHashMapUnmanaged(void) = .empty;
         defer gone.deinit(gpa);
-        for (v.del_files) |f| if (ui.attrs(f.path) == null) try gone.put(gpa, f.path, {});
+        for (v.del_files) |f| if (!rules_fs.exists(f.path)) try gone.put(gpa, f.path, {});
         const a = v.arena.allocator();
         for (v.report.?.by_category, &v.del_lists) |l, *out| {
             var keep: std.ArrayList(FileInfo) = .empty;
@@ -162,12 +157,12 @@ pub const View = struct {
             v.del_files = &.{};
         }
         var eb: [256]u8 = undefined;
-        if (v.job.errorText(&eb)) |e| return v.setStatus("Failed: {s}", .{e});
+        if (v.job.errorText(&eb)) |e| return v.status.set("Failed: {s}", .{e});
         v.report.?.by_category = v.del_lists;
         v.sumCats();
         v.showFiles(gpa);
         const r = v.del_result;
-        v.setStatus("Deleted {d} files, {f} freed, {d} skipped", .{ r.deleted, bytes.fmt(r.bytes_freed), r.skipped });
+        v.status.set("Deleted {d} files, {f} freed, {d} skipped", .{ r.deleted, bytes.fmt(r.bytes_freed), r.skipped });
     }
 
     fn sumCats(v: *View) void {
@@ -195,9 +190,9 @@ pub const View = struct {
                 v.deleting = false;
                 v.deleted(ctx.gpa);
             } else if (v.job.cancelled()) {
-                v.setStatus("Cancelled", .{});
+                v.status.set("Cancelled", .{});
             } else if (v.job.errorText(&eb)) |e| {
-                v.setStatus("Failed: {s}", .{e});
+                v.status.set("Failed: {s}", .{e});
             } else {
                 std.mem.swap(std.heap.ArenaAllocator, &v.arena, &v.next_arena);
                 _ = v.next_arena.reset(.free_all);
@@ -206,15 +201,15 @@ pub const View = struct {
                 v.sumCats();
                 v.showFiles(ctx.gpa);
                 var nb: [32]u8 = undefined;
-                v.setStatus("Analysis complete: {s} files, {f}", .{ ui.grouped(&nb, fileCount(&v.report.?)), bytes.fmt(v.report.?.total()) });
+                v.status.set("Analysis complete: {s} files, {f}", .{ ui.n0(&nb, fileCount(&v.report.?)), bytes.fmt(v.report.?.total()) });
             }
         }
         if (v.job.isRunning() and !v.deleting) {
-            const now = ui.nowMs();
+            const now = kit.w.GetTickCount64();
             if (now -% v.seen_at >= 200) {
                 v.seen_at = now;
                 var nb: [32]u8 = undefined;
-                v.setStatus("Scanning... {s} files", .{ui.grouped(&nb, v.job.done.load(.acquire))});
+                v.status.set("Scanning... {s} files", .{ui.n0(&nb, v.job.done.load(.acquire))});
             }
             ctx.app.requestFrames(2);
         }
@@ -262,7 +257,7 @@ pub const View = struct {
         if (im.ImGui_ButtonEx("Save Report...##daSave", .{ .x = 120 * s, .y = 0 })) v.saveReport(ctx);
         im.ImGui_EndGroup();
 
-        ui.status("daStatus", v.status_buf[0..v.status_len], ui.pal.text);
+        ui.status("daStatus", v.status.slice(), ui.pal.text);
     }
 
     fn drawCats(v: *View, ctx: *Ctx, h: f32) void {
@@ -288,11 +283,11 @@ pub const View = struct {
                     var db: [96]u8 = undefined;
                     var nb: [32]u8 = undefined;
                     const size = ui.z(&sb, "{f}", .{bytes.fmt(b)});
-                    const n = ui.grouped(&nb, r.by_category[i].len);
+                    const n = ui.n0(&nb, r.by_category[i].len);
                     const detail = if (total == 0)
                         ui.z(&db, "{s} files", .{n})
                     else
-                        ui.z(&db, "{s} files  \u{00B7}  {s}%", .{ n, pct(&pb, b, total) });
+                        ui.z(&db, "{s} files  \u{00B7}  {s}%", .{ n, ui.fmt01(&pb, 100 * @as(f64, @floatFromInt(b)) / @as(f64, @floatFromInt(total))) });
                     const pos = im.ImGui_GetCursorScreenPos();
                     const width = im.ImGui_GetContentRegionAvail().x;
                     // the label carries what is drawn: "Pictures  48.83 KB  1 files  33.3%###daCat0" (stable id)
@@ -319,12 +314,6 @@ pub const View = struct {
             }
         }
         im.ImGui_EndChild();
-    }
-
-    /// "0.#" of 100 * b / total.
-    fn pct(buf: []u8, b: u64, total: u64) []const u8 {
-        const p = @round(1000.0 * @as(f64, @floatFromInt(b)) / @as(f64, @floatFromInt(total))) / 10.0;
-        return if (p == @trunc(p)) std.mem.print(buf, "{d}", .{@as(u64, @intFromFloat(p))}) catch "" else std.mem.print(buf, "{d:.1}", .{p}) catch "";
     }
 
     fn drawFiles(v: *View, ctx: *Ctx, h: f32) void {

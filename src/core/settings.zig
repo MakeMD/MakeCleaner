@@ -23,24 +23,8 @@ pub fn resolveDir(gpa: Allocator, io: Io, exe_dir: []const u8) ![]u8 {
     return path.join(gpa, &.{ appdata, "MakeCleaner" });
 }
 
-/// Keys compare OrdinalIgnoreCase. ponytail: the hash folds ASCII only and skips other bytes, so keys that
-/// differ only in non-ASCII case still meet in one bucket; the rare non-ASCII letter that folds to ASCII
-/// (Kelvin sign, dotless i) would miss its twin.
-const KeyContext = struct {
-    pub fn hash(_: KeyContext, s: []const u8) u32 {
-        var h: u32 = 2166136261; // FNV-1a
-        for (s) |c| if (c < 0x80) {
-            h ^= std.ascii.toLower(c);
-            h *%= 16777619;
-        };
-        return h;
-    }
-    pub fn eql(_: KeyContext, a: []const u8, b: []const u8, _: usize) bool {
-        return common.eqlIgnoreCase(a, b);
-    }
-};
-
-const Map = std.array_hash_map.Custom([]const u8, []const u8, KeyContext, true);
+/// Keys compare OrdinalIgnoreCase.
+const Map = common.IgnoreCaseMap([]const u8);
 
 pub const Settings = struct {
     gpa: Allocator,
@@ -172,21 +156,9 @@ pub const Settings = struct {
 
 /// int.TryParse (NumberStyles.Integer): surrounding whitespace, optional sign, decimal digits, Int32 range.
 fn parseInt(text: []const u8) ?i32 {
-    var t = std.mem.trim(u8, text, " \t\r\n\x0B\x0C");
-    var neg = false;
-    if (t.len > 0 and (t[0] == '-' or t[0] == '+')) {
-        neg = t[0] == '-';
-        t = t[1..];
-    }
-    if (t.len == 0) return null;
-    var v: i64 = 0;
-    for (t) |c| {
-        if (!std.ascii.isDigit(c)) return null;
-        v = v * 10 + (c - '0');
-        if (v > 1 << 31) return null;
-    }
-    if (neg) v = -v;
-    return std.math.cast(i32, v);
+    const t = common.trim(text);
+    if (std.mem.findScalar(u8, t, '_') != null) return null; // std accepts digit separators, .NET does not
+    return std.fmt.parseInt(i32, t, 10) catch null;
 }
 
 test "Portable_dat_keeps_settings_next_to_exe" {

@@ -1205,11 +1205,11 @@ test "User winapp2.ini saved as UTF-16 (Notepad 'Unicode') loads" {
 }
 
 test "IgnoreCaseMap hashes Cyrillic case-insensitively and spreads it" {
-    const ctx: rules.NameContext = .{};
+    const ctx: common.NameContext = .{};
     try testing.expectEqual(ctx.hash("C:\\ЄВГЕН\\ФАЙЛ.TXT"), ctx.hash("c:\\євген\\файл.txt"));
     try testing.expectEqual(ctx.hash("ЁЇІҐ"), ctx.hash("ёїіґ"));
     try testing.expect(ctx.hash("архів.log") != ctx.hash("звіт.log")); // all-Cyrillic names no longer share a bucket
-    var map: rules.IgnoreCaseMap(void) = .empty;
+    var map: common.IgnoreCaseMap(void) = .empty;
     defer map.deinit(gpa);
     try map.put(gpa, "C:\\Євген\\Файл.txt", {});
     try testing.expect((try map.getOrPut(gpa, "c:\\ЄВГЕН\\файл.TXT")).found_existing);

@@ -5,6 +5,7 @@ const kit = @import("kit");
 const Ctx = @import("ctx.zig").Ctx;
 const ui = @import("tools_ui.zig");
 const uninstall = @import("../core/uninstall.zig");
+const bytes = @import("../core/bytes.zig");
 
 const im = kit.im;
 const InstalledApp = uninstall.InstalledApp;
@@ -103,16 +104,15 @@ pub const View = struct {
             const app = &v.apps[i];
             var db: [64]u8 = undefined;
             var sb: [32]u8 = undefined;
-            lines.append(a, a.print("{s}\t{s}\t{s}\t{s}\t{s}", .{ app.name, app.publisher, ui.fmtYmd(&db, app.install_date), sizeText(&sb, app.size_kb), app.version }) catch return) catch return;
+            lines.append(a, a.print("{s}\t{s}\t{s}\t{s}\t{s}", .{ app.name, app.publisher, ui.fmtInstallDate(&db, app.install_date), sizeText(&sb, app.size_kb), app.version }) catch return) catch return;
         }
         ui.saveText(ctx, &v.dlg, "programs", lines.items);
     }
 
+    /// EstimatedSize (KB) as Bytes.Fmt ("512 KB", "1.5 GB"); the C# column was always "0.# MB".
     fn sizeText(buf: []u8, kb: i64) []const u8 {
         if (kb <= 0) return "";
-        const mb = @as(f64, @floatFromInt(kb)) / 1024.0;
-        const r = @round(mb * 10) / 10; // "0.#"
-        return if (r == @trunc(r)) std.mem.print(buf, "{d} MB", .{@as(i64, @intFromFloat(r))}) catch "" else std.mem.print(buf, "{d:.1} MB", .{r}) catch "";
+        return std.mem.print(buf, "{f}", .{bytes.fmt(@as(u64, @intCast(kb)) * 1024)}) catch "";
     }
 
     pub fn draw(v: *View, ctx: *Ctx) void {
@@ -196,7 +196,7 @@ pub const View = struct {
                 var db: [64]u8 = undefined;
                 var sb: [32]u8 = undefined;
                 // cell labels "<text>##u<idx><p|d|s|v>" (Publisher, Installed On, Size, Version)
-                inline for (.{ a.publisher, ui.fmtYmd(&db, a.install_date), sizeText(&sb, a.size_kb), a.version }, .{ "p", "d", "s", "v" }) |t, c| {
+                inline for (.{ a.publisher, ui.fmtInstallDate(&db, a.install_date), sizeText(&sb, a.size_kb), a.version }, .{ "p", "d", "s", "v" }) |t, c| {
                     _ = im.ImGui_TableNextColumn();
                     ui.cell(t, "u{d}" ++ c, .{idx});
                 }

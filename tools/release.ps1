@@ -1,6 +1,5 @@
 # MakeCleaner release: zig build ReleaseSafe -> dist\publish -> portable zip -> Inno Setup installer, all into dist\.
-# Version comes from src\main.zig (`pub const version`, which may alias ui\ctx.zig's literal) - the only place it
-# lives; build.zig.zon must agree. Pure ASCII (PS 5.1). Run from PowerShell (ISCC).
+# Version comes from src\ui\ctx.zig (`pub const version`) - the only place it lives; build.zig.zon must agree. Pure ASCII (PS 5.1). Run from PowerShell (ISCC).
 # ponytail: no icon, no signing, no CI - one script, native calls.
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent
@@ -8,16 +7,11 @@ $dist = Join-Path $root 'dist'
 $build = Join-Path $dist 'build'
 $publish = Join-Path $dist 'publish'
 
-# version: the literal in src\main.zig, or the one its `pub const version = ctx_mod.version;` points at
-$main = Get-Content -Raw (Join-Path $root 'src\main.zig')
-$m = [regex]::Match($main, 'pub const version\s*=\s*"([^"]+)"')
-if (-not $m.Success -and $main -match 'pub const version\s*=\s*ctx_mod\.version') {
-    $m = [regex]::Match((Get-Content -Raw (Join-Path $root 'src\ui\ctx.zig')), 'pub const version\s*=\s*"([^"]+)"')
-}
-if (-not $m.Success) { throw 'could not read `pub const version` from src\main.zig' }
+$m = [regex]::Match((Get-Content -Raw (Join-Path $root 'src\ui\ctx.zig')), 'pub const version\s*=\s*"([^"]+)"')
+if (-not $m.Success) { throw 'could not read `pub const version` from src\ui\ctx.zig' }
 $version = $m.Groups[1].Value
 $zon = [regex]::Match((Get-Content -Raw (Join-Path $root 'build.zig.zon')), '\.version\s*=\s*"([^"]+)"').Groups[1].Value
-if ($zon -ne $version) { throw "build.zig.zon .version ($zon) differs from src\main.zig ($version)" }
+if ($zon -ne $version) { throw "build.zig.zon .version ($zon) differs from src\ui\ctx.zig ($version)" }
 
 $zig = Join-Path $env:LOCALAPPDATA 'Programs\zig\0.17.1\zig.exe'
 if (-not (Test-Path $zig)) { throw "zig 0.17.1 not found at $zig" }

@@ -4,6 +4,7 @@ const std = @import("std");
 const kit = @import("kit");
 const Ctx = @import("ctx.zig").Ctx;
 const ui = @import("tools_ui.zig");
+const rules_fs = @import("../core/rules_fs.zig");
 const duplicates = @import("../core/duplicates.zig");
 const engine = @import("../core/engine.zig");
 const bytes = @import("../core/bytes.zig");
@@ -43,8 +44,7 @@ pub const View = struct {
     checked: std.ArrayList(bool) = .empty, // per row (headers unused)
     sel: ?usize = null,
     results: bool = false,
-    status_buf: [256]u8 = undefined,
-    status_len: usize = 0,
+    status: ui.Text(256) = .{},
     seen: u64 = 0,
     seen_at: u64 = 0,
     // Delete Selected on the job (gpa-owned while it runs)
@@ -81,11 +81,6 @@ pub const View = struct {
         ctx.gpa.destroy(v);
     }
 
-    fn setStatus(v: *View, comptime fmt: []const u8, args: anytype) void {
-        const t: []const u8 = std.mem.print(&v.status_buf, fmt, args) catch &v.status_buf;
-        v.status_len = t.len;
-    }
-
     fn mb(b: anytype) u64 {
         const n = std.fmt.parseInt(i64, b.trimmed(), 10) catch return 0;
         return if (n > 0) @as(u64, @intCast(n)) << 20 else 0;
@@ -114,8 +109,8 @@ pub const View = struct {
             .max_size = if (max > 0) max else std.math.maxInt(u64),
         };
         v.seen = 0;
-        v.seen_at = ui.nowMs();
-        v.setStatus("Scanning...", .{});
+        v.seen_at = kit.w.GetTickCount64();
+        v.status.set("Scanning...", .{});
         v.job.start(v, worker) catch {};
     }
 
@@ -155,7 +150,7 @@ pub const View = struct {
         v.checked.resize(gpa, v.rows.items.len) catch {};
         @memset(v.checked.items, false);
         v.sel = null;
-        v.setStatus("Found {d} duplicate groups, {d} files, {f} reclaimable", .{ all.len, total_files, bytes.fmt(wasted) });
+        v.status.set("Found {d} duplicate groups, {d} files, {f} reclaimable", .{ all.len, total_files, bytes.fmt(wasted) });
         v.results = true;
     }
 
@@ -180,7 +175,7 @@ pub const View = struct {
         v.del_files = v.picked(gpa);
         v.gone = gpa.alloc(bool, v.rows.items.len) catch return v.freeDelete(gpa);
         v.deleting = true;
-        v.setStatus("Deleting {d} files...", .{v.del_files.len});
+        v.status.set("Deleting {d} files...", .{v.del_files.len});
         v.job.start(v, delWorker) catch {
             v.deleting = false;
             v.freeDelete(gpa);
@@ -190,7 +185,7 @@ pub const View = struct {
     fn delWorker(job: *kit.jobs.Job) anyerror!void {
         const v = job.ctx(View);
         v.del_result = engine.clean(std.heap.smp_allocator, v.io, v.del_files, 0);
-        for (v.rows.items, v.gone) |row, *g| g.* = row.file != null and ui.attrs(v.file(row).path) == null;
+        for (v.rows.items, v.gone) |row, *g| g.* = row.file != null and !rules_fs.exists(v.file(row).path);
     }
 
     fn freeDelete(v: *View, gpa: std.mem.Allocator) void {
@@ -224,7 +219,7 @@ pub const View = struct {
         v.rows.shrinkRetainingCapacity(m);
         v.checked.shrinkRetainingCapacity(m);
         v.sel = null;
-        v.setStatus("Deleted {d} files, {f} freed, {d} skipped", .{ r.deleted, bytes.fmt(r.bytes_freed), r.skipped });
+        v.status.set("Deleted {d} files, {f} freed, {d} skipped", .{ r.deleted, bytes.fmt(r.bytes_freed), r.skipped });
     }
 
     pub fn draw(v: *View, ctx: *Ctx) void {
@@ -235,18 +230,18 @@ pub const View = struct {
                 v.deleting = false;
                 v.deleted(ctx.gpa);
             } else if (v.job.cancelled()) {
-                v.setStatus("Cancelled", .{});
+                v.status.set("Cancelled", .{});
             } else if (v.job.errorText(&eb)) |e| {
-                v.setStatus("Failed: {s}", .{e});
+                v.status.set("Failed: {s}", .{e});
             } else v.show(ctx.gpa);
         }
         if (v.job.isRunning() and !v.deleting) {
-            const now = ui.nowMs();
+            const now = kit.w.GetTickCount64();
             if (now -% v.seen_at >= 200) {
                 v.seen = v.job.done.load(.acquire);
                 v.seen_at = now;
                 var nb: [32]u8 = undefined;
-                v.setStatus("Scanning... {s} files", .{ui.grouped(&nb, v.seen)});
+                v.status.set("Scanning... {s} files", .{ui.n0(&nb, v.seen)});
             }
             ctx.app.requestFrames(2);
         }
@@ -258,7 +253,7 @@ pub const View = struct {
             if (v.results) v.drawResults(ctx) else v.drawSetup(ctx);
         }
         im.ImGui_EndChild();
-        ui.status("dupStatus", v.status_buf[0..v.status_len], ui.pal.text);
+        ui.status("dupStatus", v.status.slice(), ui.pal.text);
     }
 
     fn drawSetup(v: *View, ctx: *Ctx) void {

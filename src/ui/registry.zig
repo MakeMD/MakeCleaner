@@ -5,6 +5,7 @@ const std = @import("std");
 const kit = @import("kit");
 const Ctx = @import("ctx.zig").Ctx;
 const g = @import("g1_common.zig");
+const ui = @import("tools_ui.zig");
 const regfix = @import("g1_regfix.zig");
 const common = @import("../core/common.zig");
 const regcleaner = @import("../core/regcleaner.zig");
@@ -90,13 +91,13 @@ pub const Page = struct {
 
     pub fn draw(self: *Page, ctx: *Ctx) void {
         const p = self;
-        if (g.ended(&p.work)) p.finishWork();
+        if (ui.jobDone(&p.work)) p.finishWork();
         if (p.work.isRunning()) {
             p.bar_done = p.work.done.load(.acquire);
             p.bar_total = p.work.total.load(.acquire);
         }
         if (p.phase == .scanning) g.waitCursor(); // RunScan: Cursor = Cursors.Wait
-        const s = g.scale();
+        const s = ui.scale();
         const avail = im.ImGui_GetContentRegionAvail();
         const left_w = 300 * s;
         if (g.beginPanel("##regLeft", .{ .x = left_w, .y = avail.y }, .{ .x = 12 * s, .y = 10 * s }, false)) p.drawCategories(ctx);
@@ -118,7 +119,7 @@ pub const Page = struct {
         im.ImGui_PushFontFloat(g.boldFont(), 0);
         const changed_all = kit.ui.triCheckbox("All categories##regall", &all);
         im.ImGui_PopFont();
-        im.ImGui_Dummy(.{ .x = 0, .y = 2 * g.scale() });
+        im.ImGui_Dummy(.{ .x = 0, .y = 2 * ui.scale() });
         if (changed_all) {
             // CheckNode group without warnings: tick all when some are off, else untick all
             const on = all == .on and n < cats.len;
@@ -144,7 +145,7 @@ pub const Page = struct {
     // ------------------------------------------------------------ right side
 
     fn drawRight(p: *Page, ctx: *Ctx) void {
-        const s = g.scale();
+        const s = ui.scale();
         var sbuf: [256]u8 = undefined;
         const job_status = if (p.work.isRunning() and p.phase == .scanning) p.work.status(&sbuf) else "";
         const shown = if (job_status.len > 0) job_status else p.status.items;
@@ -171,10 +172,10 @@ pub const Page = struct {
     }
 
     fn drawList(p: *Page, ctx: *Ctx, w: f32, h: f32) void {
-        const s = g.scale();
+        const s = ui.scale();
         const flags = g.list_flags | (if (p.rows.items.len == 0) im.ImGuiTableFlags_NoBordersInBody else 0);
-        im.ImGui_PushStyleColorImVec4(im.ImGuiCol_TableRowBg, g.col(pal.surface));
-        im.ImGui_PushStyleColorImVec4(im.ImGuiCol_TableRowBgAlt, g.col(pal.surface));
+        im.ImGui_PushStyleColorImVec4(im.ImGuiCol_TableRowBg, ui.col(pal.surface));
+        im.ImGui_PushStyleColorImVec4(im.ImGuiCol_TableRowBgAlt, ui.col(pal.surface));
         defer im.ImGui_PopStyleColorEx(2);
         if (!im.ImGui_BeginTableEx("##reglist", 4, flags, .{ .x = w, .y = h }, 0)) return;
         defer im.ImGui_EndTable();
@@ -208,7 +209,7 @@ pub const Page = struct {
                 var v: Tri = if (r.on) .on else .off;
                 if (kit.ui.triCheckbox(chk.ptr, &v)) r.on = v == .on;
                 _ = im.ImGui_TableNextColumn();
-                text(r.issue.problem);
+                cell(r.issue.problem);
                 _ = im.ImGui_TableNextColumn();
                 cell(r.issue.data);
                 _ = im.ImGui_TableNextColumn();
@@ -234,20 +235,11 @@ pub const Page = struct {
         }
     }
 
-    fn text(s: []const u8) void {
-        im.ImGui_TextUnformattedEx(s.ptr, s.ptr + s.len);
-    }
-
     /// A cell whose text may be cut at the column edge: full text as a tooltip when it is.
     fn cell(s: []const u8) void {
-        text(s);
-        if (im.ImGui_GetItemRectSize().x <= im.ImGui_GetColumnWidth(-1) or !im.ImGui_IsItemHovered(im.ImGuiHoveredFlags_ForTooltip)) return;
-        if (im.ImGui_BeginTooltip()) {
-            im.ImGui_PushTextWrapPos(600 * g.scale());
-            text(s);
-            im.ImGui_PopTextWrapPos();
-            im.ImGui_EndTooltip();
-        }
+        const avail = im.ImGui_GetContentRegionAvail().x;
+        im.ImGui_TextUnformattedEx(s.ptr, s.ptr + s.len);
+        if (ui.textW(s) > avail) ui.tip(s);
     }
 
     fn tick(p: *Page, category: ?[]const u8, on: bool) void {

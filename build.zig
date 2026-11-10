@@ -3,20 +3,11 @@ const Translator = @import("translate_c").Translator;
 
 // zig build              exe (zig-out/bin/MakeCleaner.exe + rules/)
 // zig build test         every test (src/test_all.zig)
-// zig build test-<pkg>   one package: base | rules | browsers | registry | systools | filetools
+// zig build test-<pkg>   one package: base | rules | browsers | registry | systools | filetools | ui
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{ .default_target = .{ .cpu_arch = .x86_64, .os_tag = .windows, .abi = .gnu } });
     const optimize = b.standardOptimizeOption(.{});
     const kit_dep = b.dependency("makekit", .{ .target = target, .optimize = optimize });
-    // ponytail: workaround for MakeKit 86e19c3 - third_party/imgui/VERSION shadows libc++'s <version> on
-    // case-insensitive NTFS. Search that dir after the system headers (-idirafter); quoted includes still
-    // resolve. Delete this loop once MakeKit moves VERSION off the include path.
-    for (kit_dep.artifact("imgui").root_module.include_dirs.items) |*d| switch (d.*) {
-        .path => |p| if (p == .src_path and std.mem.eql(u8, std.Io.Dir.path.basename(p.src_path.sub_path), "imgui")) {
-            d.* = .{ .path_after = p };
-        },
-        else => {},
-    };
 
     // ---- SQLite amalgamation (third_party/sqlite, see VERSION) as a static C lib, exposed as module "sqlite"
     const sqlite_c = b.createModule(.{ .target = target, .optimize = optimize, .link_libc = true });
@@ -58,7 +49,7 @@ pub fn build(b: *std.Build) void {
     b.step("run", "Run MakeCleaner").dependOn(&run.step);
 
     // ---- tests: one root per package (owned by that package), test_all = everything
-    for ([_][]const u8{ "all", "base", "rules", "browsers", "registry", "systools", "filetools" }) |name| {
+    for ([_][]const u8{ "all", "base", "rules", "browsers", "registry", "systools", "filetools", "ui" }) |name| {
         const root = b.fmt("src/test_{s}.zig", .{name});
         const t = b.addTest(.{ .name = b.fmt("test-{s}", .{name}), .root_module = module(b, root, imports, target, optimize) });
         const step_name = if (std.mem.eql(u8, name, "all")) "test" else b.fmt("test-{s}", .{name});

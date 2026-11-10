@@ -6,4 +6,5 @@ test {
     _ = @import("test_registry.zig");
     _ = @import("test_systools.zig");
     _ = @import("test_filetools.zig");
+    _ = @import("test_ui.zig");
 }

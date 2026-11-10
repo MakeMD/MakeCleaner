@@ -13,20 +13,12 @@ const im = kit.im;
 const include_modes = [_][*:0]const u8{ "Files only", "Files and subfolders", "Files, subfolders and the folder itself" };
 const exclude_kinds = [_][*:0]const u8{ "Folder", "File", "Registry key" };
 
-/// Status line state shared by both pages.
-const Status = struct {
-    buf: [400]u8 = undefined,
-    len: usize = 0,
-    fn set(st: *Status, comptime fmt: []const u8, args: anytype) void {
-        const t: []const u8 = std.mem.print(&st.buf, fmt, args) catch &st.buf;
-        st.len = t.len;
-    }
-    fn draw(st: *Status, ctx: *Ctx, id: []const u8) void {
-        im.ImGui_PushFontFloat(ctx.app.fonts.bold, 0);
-        ui.status(id, st.buf[0..st.len], ui.pal.text);
-        im.ImGui_PopFont();
-    }
-};
+/// Status line of both pages (bold).
+fn drawStatus(st: *const ui.Text(400), ctx: *Ctx, id: []const u8) void {
+    im.ImGui_PushFontFloat(ctx.app.fonts.bold, 0);
+    ui.status(id, st.slice(), ui.pal.text);
+    im.ImGui_PopFont();
+}
 
 /// The settings list `prefix` as a single-selection list box (640 x 160). Returns nothing; `sel` is the index.
 fn listBox(ctx: *Ctx, id: [*:0]const u8, row_id: []const u8, prefix: []const u8, sel: *?usize) void {
@@ -66,10 +58,6 @@ fn fullyQualified(p: []const u8) bool {
     return p.len >= 2 and (p[0] == '\\' or p[0] == '/') and (p[1] == '\\' or p[1] == '/');
 }
 
-fn dirName(p: []const u8) []const u8 {
-    return std.fs.path.dirname(p) orelse p;
-}
-
 // ---------------------------------------------------------------- Include
 
 pub const Include = struct {
@@ -78,7 +66,7 @@ pub const Include = struct {
     pattern: ui.Buf(128) = ui.initBuf(128, "*.*"),
     age: ui.Buf(16) = ui.initBuf(16, "0"),
     sel: ?usize = null,
-    st: Status = .{},
+    st: ui.Text(400) = .{},
 
     pub fn draw(p: *Include, ctx: *Ctx) void {
         const s = ui.scale();
@@ -107,7 +95,7 @@ pub const Include = struct {
         im.ImGui_Dummy(.{ .x = 0, .y = 4 * s });
         listBox(ctx, "##incList", "inc", custom.include_prefix, &p.sel);
         im.ImGui_Dummy(.{ .x = 0, .y = 4 * s });
-        p.st.draw(ctx, "incStatus");
+        drawStatus(&p.st, ctx, "incStatus");
     }
 
     fn add(p: *Include, ctx: *Ctx) void {
@@ -121,9 +109,9 @@ pub const Include = struct {
         const expanded = kit.win.expandEnv(a, raw) catch return;
         const full = (rules_fs.fullPath(a, expanded) catch null) orelse return p.st.set("Folder or file not found.", .{});
         var entry: []const u8 = undefined;
-        if (ui.isFile(full)) {
-            entry = a.print("{s}|{s}", .{ dirName(full), std.fs.path.basename(full) }) catch return;
-        } else if (ui.isDir(full)) {
+        if (rules_fs.isFile(full)) {
+            entry = a.print("{s}|{s}", .{ std.fs.path.dirname(full) orelse full, std.fs.path.basename(full) }) catch return;
+        } else if (rules_fs.isDir(full)) {
             const mask = p.pattern.trimmed();
             const suffix: []const u8 = switch (p.mode) {
                 1 => "|RECURSE",
@@ -157,7 +145,7 @@ pub const Exclude = struct {
     path: ui.Buf(1024) = .{},
     kind: c_int = 0,
     sel: ?usize = null,
-    st: Status = .{},
+    st: ui.Text(400) = .{},
 
     pub fn draw(p: *Exclude, ctx: *Ctx) void {
         const s = ui.scale();
@@ -176,7 +164,7 @@ pub const Exclude = struct {
         im.ImGui_Dummy(.{ .x = 0, .y = 4 * s });
         listBox(ctx, "##excList", "exc", custom.exclude_prefix, &p.sel);
         im.ImGui_Dummy(.{ .x = 0, .y = 4 * s });
-        p.st.draw(ctx, "excStatus");
+        drawStatus(&p.st, ctx, "excStatus");
     }
 
     fn add(p: *Exclude, ctx: *Ctx) void {
@@ -187,13 +175,13 @@ pub const Exclude = struct {
         const x = kit.win.expandEnv(a, raw) catch return;
         const full = fullyQualified(x);
         const entry: ?[]const u8 = switch (p.kind) {
-            0 => if (full and ui.isDir(x)) blk: {
+            0 => if (full and rules_fs.isDir(x)) blk: {
                 const f = (rules_fs.fullPath(a, x) catch null) orelse break :blk null;
                 break :blk a.print("PATH|{s}", .{std.mem.trimEnd(u8, f, "\\")}) catch null;
             } else null,
-            1 => if (full and ui.isFile(x)) blk: {
+            1 => if (full and rules_fs.isFile(x)) blk: {
                 const f = (rules_fs.fullPath(a, x) catch null) orelse break :blk null;
-                break :blk a.print("FILE|{s}|{s}", .{ dirName(f), std.fs.path.basename(x) }) catch null;
+                break :blk a.print("FILE|{s}|{s}", .{ std.fs.path.dirname(f) orelse f, std.fs.path.basename(x) }) catch null;
             } else null,
             else => if (std.ascii.startsWithIgnoreCase(raw, "HK") and std.mem.findScalar(u8, raw, '\\') != null)
                 a.print("REG|{s}", .{raw}) catch null

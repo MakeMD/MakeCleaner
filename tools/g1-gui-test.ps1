@@ -1,74 +1,64 @@
 # MC-G1 GUI test (Zig/ImGui build): shell (rail, About), Cleaner and Registry pages, driven through the MakeKit
-# automation pipe on \\.\DISPLAY1. Sandbox: a copy of zig-out\bin with portable.dat, fixture TEMP/APPDATA/LOCALAPPDATA,
-# an ini where every Windows rule is off except "Custom Files and Folders" (-> fixture Junk folder), a fake Edge
-# profile, a fake "msedge.exe" (renamed ping.exe, killed by PID) and MuiCache fixture values in HKCU that only this
-# test creates and fixes. Real stale MuiCache entries are never selected ("Select none" first, counter checked).
+# automation pipe on \\.\DISPLAY<Screen>. Two runs, each on its own mc-auto sandbox (portable copy, fixture
+# TEMP/APPDATA/LOCALAPPDATA, every Windows rule off except "Custom Files and Folders" -> fixture Junk folder):
+#   1. a fake Edge profile, a fake "msedge.exe" (renamed ping.exe, killed by PID) and MuiCache fixture values in HKCU
+#      that only this test creates and fixes. Real stale MuiCache entries are never selected ("Select none" first,
+#      counter checked). Wipe warning, group tick, Files right-click exclude, running-browser dialog, Registry
+#      review/fix, About, ticks persisted on WM_CLOSE.
+#   2. modal dim, Registry cell tooltip, and closing the window during Run Cleaner (must exit at once, not wait for
+#      the clean): secure delete 7 passes on 100 x 4 MB fixture files keeps the clean busy long enough.
 # Never clicks Open containing folder / Open in RegEdit (they open windows / may elevate). Pure ASCII (PS 5.1).
-#   powershell -ExecutionPolicy Bypass -File tools\g1-gui-test.ps1 [-Bin zig-out\bin] [-Shots zig-out\shots]
-param([string]$Bin = '', [string]$Shots = '')
+#   powershell -ExecutionPolicy Bypass -File tools\g1-gui-test.ps1 [-BinDir zig-out\bin] [-ShotDir zig-out\shots]
+param([int]$Screen = 1, [string]$BinDir = '', [string]$ShotDir = '')
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version 2
 $root = Split-Path -Parent $PSScriptRoot
-if (-not $Bin) { $Bin = Join-Path $root 'zig-out\bin' }
-if (-not $Shots) { $Shots = Join-Path $root 'zig-out\shots' }
-. (Join-Path $root '..\MakeKit\tools\imgui-auto.ps1')
-New-Item -ItemType Directory -Force $Shots | Out-Null
+if (-not $BinDir) { $BinDir = Join-Path $root 'zig-out\bin' }
+if (-not $ShotDir) { $ShotDir = Join-Path $root 'zig-out\shots' }
+. (Join-Path $PSScriptRoot 'mc-auto.ps1')
 
 $rnd = [guid]::NewGuid().ToString('N').Substring(0, 8)
-$T = Join-Path ([IO.Path]::GetTempPath()) "makecleaner-test-g1-$rnd"
-$appDir = Join-Path $T 'app'
-$fx = Join-Path $T 'fx'
-$junk = Join-Path $fx 'Junk'
-$local = Join-Path $fx 'Local'
-$roaming = Join-Path $fx 'Roaming'
-$temp = Join-Path $fx 'Temp'
-foreach ($d in @($appDir, $junk, (Join-Path $junk 'sub'), $local, $roaming, $temp)) { New-Item -ItemType Directory -Force $d | Out-Null }
-Copy-Item -Recurse -Force (Join-Path $Bin '*') $appDir
-Set-Content (Join-Path $appDir 'portable.dat') '#PORTABLE#' -Encoding Ascii
-foreach ($f in @('a.tmp', 'b.tmp', 'keep.txt', 'sub\c.tmp')) { [IO.File]::WriteAllBytes((Join-Path $junk $f), (New-Object byte[] 1500)) }
-$edge = Join-Path $local 'Microsoft\Edge\User Data\Default'
-New-Item -ItemType Directory -Force (Join-Path $edge 'Cache\Cache_Data') | Out-Null
-Set-Content (Join-Path $edge 'Preferences') '{}' -Encoding Ascii
-[IO.File]::WriteAllBytes((Join-Path $edge 'Cache\Cache_Data\data_0'), (New-Object byte[] 4096))
-
 $cats = @('Missing Shared DLLs', 'Unused File Extensions', 'ActiveX and Class Issues', 'Type Libraries', 'Applications', 'Fonts',
     'Application Paths', 'Help Files', 'Installer', 'Obsolete Software', 'Run At Startup', 'Start Menu Ordering', 'MUI Cache',
     'Sound Events', 'Windows Services')
-$names = Select-String -Path (Join-Path $root 'rules\Windows.ini') -Pattern '^\[(.+)\]$' | ForEach-Object { $_.Matches[0].Groups[1].Value }
-$ini = @('[Options]') + ($names | ForEach-Object { "$_=False" }) + @('Custom Files and Folders=True', "Include1=$junk|*.*|RECURSE") +
-    ($cats | ForEach-Object { "Reg:$_=" + ($_ -eq 'MUI Cache') })
-Set-Content (Join-Path $appDir 'MakeCleaner.ini') $ini -Encoding UTF8
+$regIni = @($cats | ForEach-Object { "Reg:$_=" + ($_ -eq 'MUI Cache') })
 
 # MuiCache fixtures: values naming exes that do not exist (= "Missing MUI reference")
 $muiPath = 'Software\Classes\Local Settings\Software\Microsoft\Windows\Shell\MuiCache'
 $mui = [Microsoft.Win32.Registry]::CurrentUser.CreateSubKey($muiPath)
 $fixDir = "C:\mc-g1-fixture-$rnd"
 $fixNames = @('one', 'two', 'three') | ForEach-Object { "$fixDir\$_.exe.FriendlyAppName" }
-foreach ($n in $fixNames) { $mui.SetValue($n, 'MakeCleaner G1 fixture') }
+$fixDir2 = "C:\mc-g1-fix-$rnd\a-rather-long-folder-name-that-overflows-the-data-column"
+$fixNames2 = @('one', 'two') | ForEach-Object { "$fixDir2\$_.exe.FriendlyAppName" }
+foreach ($n in $fixNames + $fixNames2) { $mui.SetValue($n, 'MakeCleaner G1 fixture') }
 
-$fakeEdge = $null
+$sb = $null
 $app = $null
-function Shot($name) { $null = Save-AutoScreenshot $app (Join-Path $Shots "MC-G1-$name.bmp"); Write-Host "shot: MC-G1-$name" }
+$fakeEdge = $null
+$shot = 'MC-G1'
+function Shot($name) { Save-McShot $app (Join-Path $ShotDir "$shot-$name.png") }
 function Item($label) { Wait-AutoItem $app $label 5000 }
 function Items() { @(Get-AutoItems $app) }
-function WaitLabel($like, $ms = 30000) {
-    $deadline = (Get-Date).AddMilliseconds($ms)
-    while ((Get-Date) -lt $deadline) {
-        $hit = @(Items | Where-Object { $_.label -like $like })
-        if ($hit.Count -gt 0) { return $hit[0] }
-        $null = Invoke-AutoFrames $app 2
-        Start-Sleep -Milliseconds 100
-    }
-    throw "timeout waiting for '$like'"
-}
 function Gone($like) { if (@(Items | Where-Object { $_.label -like $like }).Count -gt 0) { throw "'$like' should be gone" } }
 function Check($cond, $msg) { if (-not $cond) { throw "FAILED: $msg" }; Write-Host "ok: $msg" }
+function Settle($ms) { $end = (Get-Date).AddMilliseconds($ms); while ((Get-Date) -lt $end) { $null = Invoke-AutoFrames $app 1; Start-Sleep -Milliseconds 50 } }
+function Junk($rel) { $d = Join-Path $sb.Fx $rel; New-Item -ItemType Directory -Force $d | Out-Null; $d }
 
-$envs = @{ TEMP = $temp; TMP = $temp; APPDATA = $roaming; LOCALAPPDATA = $local }
 try {
-    $app = Start-AutoApp -Exe (Join-Path $appDir 'MakeCleaner.exe') -Env $envs
+    # ================ run 1
+    $sb = New-McSandbox $BinDir 'g1'
+    $junk = Junk 'Junk'
+    $null = Junk 'Junk\sub'
+    foreach ($f in @('a.tmp', 'b.tmp', 'keep.txt', 'sub\c.tmp')) { [IO.File]::WriteAllBytes((Join-Path $junk $f), (New-Object byte[] 1500)) }
+    $edge = Join-Path $sb.Local 'Microsoft\Edge\User Data\Default'
+    New-Item -ItemType Directory -Force (Join-Path $edge 'Cache\Cache_Data') | Out-Null
+    Set-Content (Join-Path $edge 'Preferences') '{}' -Encoding Ascii
+    [IO.File]::WriteAllBytes((Join-Path $edge 'Cache\Cache_Data\data_0'), (New-Object byte[] 4096))
+    Set-McIni $sb -On 'Custom Files and Folders' -Extra (@("Include1=$junk|*.*|RECURSE") + $regIni)
+    $app = Start-McApp $sb -Screen $Screen
+
     # ---------------- Cleaner
-    $null = WaitLabel '*applications detected##status'
+    $null = Wait-McLabel $app '*applications detected##status'
     Shot 'cleaner-start'
     # collapse the groups above Advanced so its items are on screen (automation clicks visible items only)
     foreach ($gname in @('Windows Explorer', 'System')) { Invoke-AutoClick $app "##wt:$gname" }
@@ -100,21 +90,21 @@ try {
     Invoke-AutoClick $app 'Windows##tabWindows'
 
     Invoke-AutoClick $app 'Analyze##analyze'
-    $st = WaitLabel 'Analysis complete*##status' 60000
+    $st = Wait-McLabel $app 'Analysis complete*##status' 60000
     Write-Host "status: $($st.label)"
     Check ((Item 'Run Cleaner##clean').disabled -eq $false) 'Run Cleaner enabled after a non-empty analysis'
     Shot 'cleaner-summary'
     Invoke-AutoClick $app 'Files##viewFiles'; $null = Invoke-AutoFrames $app 3
-    $keep = WaitLabel '*keep.txt##l*'
+    $keep = Wait-McLabel $app '*keep.txt##l*'
     Invoke-AutoClick $app $keep.label -Kind rclick
     $null = Item 'Add file to Exclude'
     Shot 'cleaner-files-menu'
     Invoke-AutoClick $app 'Add file to Exclude'
-    $null = WaitLabel 'Added to Exclude:*keep.txt*##status'
+    $null = Wait-McLabel $app 'Added to Exclude:*keep.txt*##status'
     Gone '*keep.txt##l*'
 
     # fake running Edge: a renamed ping.exe of our own (killed by PID below)
-    $fakeExe = Join-Path $T 'msedge.exe'
+    $fakeExe = Join-Path $sb.Root 'msedge.exe'
     Copy-Item (Join-Path $env:WINDIR 'System32\PING.EXE') $fakeExe
     $fakeEdge = Start-Process -FilePath $fakeExe -ArgumentList '-n', '300', '127.0.0.1' -WindowStyle Hidden -PassThru
     Invoke-AutoClick $app 'Run Cleaner##clean'
@@ -127,15 +117,15 @@ try {
     $real = @(Get-Process msedge -ErrorAction SilentlyContinue | Where-Object { $_.Id -ne $fakeEdge.Id })
     if ($real.Count -eq 0) {
         Invoke-AutoClick $app 'Close Microsoft Edge##dialogButton0' # only our fake runs: it has no window, so it never closes
-        $null = WaitLabel 'Closing Microsoft Edge*##status' 5000
-        $null = WaitLabel '*did not close*##dialogText' 20000
+        $null = Wait-McLabel $app 'Closing Microsoft Edge*##status' 5000
+        $null = Wait-McLabel $app '*did not close*##dialogText' 20000
         Shot 'cleaner-not-closed'
         Invoke-AutoClick $app 'OK##dialogButton0'
     } else {
         Write-Host 'real Edge is running: Skip instead of Close'
         Invoke-AutoClick $app 'Skip##dialogButton1'
     }
-    $st = WaitLabel 'Cleaning complete*##status' 60000
+    $st = Wait-McLabel $app 'Cleaning complete*##status' 60000
     Write-Host "status: $($st.label)"
     Shot 'cleaner-cleaned'
     Check ($st.label -like '*skipped running: Microsoft Edge*') 'running Edge left out'
@@ -153,66 +143,66 @@ try {
 
     # ---------------- About
     Invoke-AutoClick $app 'About##about'
-    $null = WaitLabel 'MakeCleaner 2.0.0*##dialogText' 5000
+    $null = Wait-McLabel $app 'MakeCleaner 2.0.0*##dialogText' 5000
     Shot 'about'
     Invoke-AutoKey $app 'Enter'; $null = Invoke-AutoFrames $app 3
     Gone '*##dialogText'
 
     # ---------------- Registry
     Invoke-AutoClick $app 'Registry'
-    $null = WaitLabel 'Pick the categories*##regstatus' 5000
+    $null = Wait-McLabel $app 'Pick the categories*##regstatus' 5000
     Invoke-AutoClick $app 'All categories##regall'; $null = Invoke-AutoFrames $app 2
     Check ((Item 'All categories##regall').checked -and (Item 'Fonts##regcat:Fonts').checked) 'All categories from mixed -> all on'
     Invoke-AutoClick $app 'Scan for Issues##regscan'
     Invoke-AutoClick $app 'Cancel##regcancel'
-    $st = WaitLabel 'Scan c*##regstatus' 120000
+    $st = Wait-McLabel $app 'Scan c*##regstatus' 120000
     Write-Host "scan + cancel: $($st.label)"
     Invoke-AutoClick $app 'All categories##regall'; $null = Invoke-AutoFrames $app 2
     Check (-not (Item 'MUI Cache##regcat:MUI Cache').checked) 'All categories from on -> all off'
     Invoke-AutoClick $app 'Scan for Issues##regscan'
-    $null = WaitLabel 'Tick at least one category*##regstatus' 5000
+    $null = Wait-McLabel $app 'Tick at least one category*##regstatus' 5000
     Invoke-AutoClick $app 'MUI Cache##regcat:MUI Cache'
     Shot 'registry-start'
     Invoke-AutoClick $app 'Scan for Issues##regscan'
-    $st = WaitLabel 'Scan complete*##regstatus' 60000
+    $st = Wait-McLabel $app 'Scan complete*##regstatus' 60000
     Write-Host "scan: $($st.label)"
     Shot 'registry-scanned'
-    $fx3 = WaitLabel "##rc*:*mc-g1-fixture-$rnd\three.exe*"
+    $fx3 = Wait-McLabel $app "##rc*:*mc-g1-fixture-$rnd\three.exe*"
     $row3 = '##row' + ($fx3.label -replace '^##rc(\d+):.*$', '$1')
     Invoke-AutoClick $app $row3 -Kind rclick
     $null = Item 'Add to Exclude list'
     Shot 'registry-menu'
     Invoke-AutoClick $app 'Add to Exclude list'
-    $null = WaitLabel 'Excluded:*three.exe*##regstatus'
+    $null = Wait-McLabel $app 'Excluded:*three.exe*##regstatus'
     Gone "##rc*:*three.exe*"
-    $fx1 = WaitLabel "##rc*:*mc-g1-fixture-$rnd\one.exe*"
+    $fx1 = Wait-McLabel $app "##rc*:*mc-g1-fixture-$rnd\one.exe*"
     Invoke-AutoClick $app ('##row' + ($fx1.label -replace '^##rc(\d+):.*$', '$1')) -Kind rclick
     Invoke-AutoClick $app 'Select none'; $null = Invoke-AutoFrames $app 2
     Check (@(Items | Where-Object { $_.label -like '##rc*' -and $_.checked }).Count -eq 0) 'Select none'
-    foreach ($n in @('one', 'two')) { Invoke-AutoClick $app (WaitLabel "##rc*:*mc-g1-fixture-$rnd\$n.exe*").label }
+    foreach ($n in @('one', 'two')) { Invoke-AutoClick $app (Wait-McLabel $app "##rc*:*mc-g1-fixture-$rnd\$n.exe*").label }
     $null = Invoke-AutoFrames $app 2
     $ticked = @(Items | Where-Object { $_.label -like '##rc*' -and $_.checked })
     Check ($ticked.Count -eq 2 -and @($ticked | Where-Object { $_.label -notlike "*mc-g1-fixture-$rnd*" }).Count -eq 0) 'only the two fixtures ticked'
     Invoke-AutoClick $app 'Review selected Issues...##regfix'
-    $c = WaitLabel 'Issue 1 of 2*##regcounter' 15000
-    Check (@(Get-ChildItem (Join-Path $appDir 'RegistryBackups') -Filter 'MakeCleaner_registry_*.reg').Count -eq 1) 'silent backup written'
-    $null = WaitLabel "*mc-g1-fixture-$rnd*##regdetails"
+    $null = Wait-McLabel $app 'Issue 1 of 2*##regcounter' 15000
+    Check (@(Get-ChildItem (Join-Path $sb.App 'RegistryBackups') -Filter 'MakeCleaner_registry_*.reg').Count -eq 1) 'silent backup written'
+    $null = Wait-McLabel $app "*mc-g1-fixture-$rnd*##regdetails"
     Shot 'registry-fix-dialog'
     Invoke-AutoClick $app '>>##regnext'
-    $null = WaitLabel 'Issue 2 of 2*##regcounter' 3000
+    $null = Wait-McLabel $app 'Issue 2 of 2*##regcounter' 3000
     Invoke-AutoClick $app 'Fix All Selected##regfixall'
     $null = Item 'Fix all##dialogButton0'
     Shot 'registry-fix-confirm'
     Invoke-AutoKey $app 'Escape'; $null = Invoke-AutoFrames $app 3
     Gone 'Fix all##dialogButton0'
-    $det = WaitLabel "*mc-g1-fixture-$rnd*##regdetails"
+    $det = Wait-McLabel $app "*mc-g1-fixture-$rnd*##regdetails"
     Check ($det.label -like '*Solution: delete the registry value.*') 'details show the solution'
     Invoke-AutoClick $app 'Fix Issue##regfixone'
-    $null = WaitLabel 'Issue 1 of 2*##regcounter' 15000
+    $null = Wait-McLabel $app 'Issue 1 of 2*##regcounter' 15000
     Check (@($mui.GetValueNames() | Where-Object { $_ -eq $fixNames[0] -or $_ -eq $fixNames[1] }).Count -eq 1) 'Fix Issue removed one fixture'
     Invoke-AutoClick $app 'Fix All Selected##regfixall'
     Invoke-AutoClick $app 'Fix all##dialogButton0'
-    $st = WaitLabel 'Fixed 2 issues*##regstatus' 15000
+    $st = Wait-McLabel $app 'Fixed 2 issues*##regstatus' 15000
     Write-Host "fix: $($st.label)"
     Shot 'registry-fixed'
     Check (@($mui.GetValueNames() | Where-Object { $_ -eq $fixNames[0] -or $_ -eq $fixNames[1] }).Count -eq 0) 'Fix All removed the other fixture'
@@ -220,16 +210,69 @@ try {
     Invoke-AutoClick $app 'Cleaner'; $null = Invoke-AutoFrames $app 3
 
     # ---------------- close = WM_CLOSE (saves the ticks); automation 'quit' would skip that
-    $null = $app.Process.CloseMainWindow()
-    if (-not $app.Process.WaitForExit(10000)) { throw 'app did not exit on WM_CLOSE' }
-    Check ($app.Process.ExitCode -eq 0) 'exit code 0'
-    $saved = Get-Content (Join-Path $appDir 'MakeCleaner.ini')
+    Check ((Close-McApp $app) -eq 0) 'exit code 0'
+    $saved = Get-Content $sb.Ini
     $saved | Where-Object { $_ -match '^(Microsoft Edge|Custom|Wipe|Reg:MUI|Exclude)' } | ForEach-Object { Write-Host "ini: $_" }
     Check ($saved -contains 'Microsoft Edge: Internet Cache=False') 'browser ticks persisted on close'
     Check ($saved -contains 'Custom Files and Folders=True') 'rule ticks persisted on close'
     Check (-not ($saved -contains 'Wipe Free Space=True')) 'wipe never saved as on'
     Check ($saved -contains 'Reg:MUI Cache=True' -and $saved -contains 'Reg:Fonts=False') 'registry categories persisted'
     Check (@($saved | Where-Object { $_ -like 'Exclude*=FILE|*keep.txt' }).Count -eq 1 -and @($saved | Where-Object { $_ -like "Exclude*=REG|*three.exe.FriendlyAppName" }).Count -eq 1) 'excludes saved'
+    Remove-McSandbox $sb $app
+    $sb = $null; $app = $null
+
+    # ================ run 2: modal dim, Registry cell tooltip, close during Run Cleaner
+    $shot = 'fix-MC-G1'
+    $sb = New-McSandbox $BinDir 'g1fix'
+    $junk = Junk 'Junk\a-long-folder-name-so-the-item-column-has-to-cut-it\and-one-more-level'
+    $blob = New-Object byte[] (4MB)
+    for ($i = 0; $i -lt 100; $i++) { [IO.File]::WriteAllBytes((Join-Path $junk ("junk{0:D3}.tmp" -f $i)), $blob) }
+    Set-McIni $sb -On 'Custom Files and Folders' -Extra (@("Include1=$junk|*.*|RECURSE", 'SecureDeletePasses=7') + $regIni)
+    $app = Start-McApp $sb -Screen $Screen
+    $null = Wait-McLabel $app '*applications detected##status'
+    Shot 'cleaner-empty'
+    $r = @(Items | Where-Object { $_.label -eq 'Summary##viewSummary' })[0]
+    Write-Host ("radio item: " + ($r | ConvertTo-Json -Compress))
+
+    Invoke-AutoClick $app 'About##about'
+    $null = Wait-McLabel $app 'MakeCleaner 2.0.0*##dialogText' 5000
+    Shot 'about-3frames'
+    Settle 600
+    Shot 'about-settled'
+    Invoke-AutoKey $app 'Enter'; $null = Invoke-AutoFrames $app 3
+
+    Invoke-AutoClick $app 'Registry'
+    $null = Wait-McLabel $app 'Pick the categories*##regstatus' 5000
+    Shot 'registry-empty'
+    Invoke-AutoClick $app 'Scan for Issues##regscan'
+    $null = Wait-McLabel $app 'Scan complete*##regstatus' 60000
+    $fx1 = Wait-McLabel $app "##rc*:*mc-g1-fix-$rnd*one.exe*"
+    Invoke-AutoClick $app ('##row' + ($fx1.label -replace '^##rc(\d+):.*$', '$1')) -Kind hover
+    Settle 1200
+    Check (@(Get-AutoItems $app -Windows | Where-Object { $_.name -like '*Tooltip*' }).Count -gt 0) 'cut-off Registry cell shows a tooltip'
+    Shot 'registry-tooltip'
+
+    Invoke-AutoClick $app 'Cleaner'; $null = Invoke-AutoFrames $app 3
+    Invoke-AutoClick $app 'Analyze##analyze'
+    $st = Wait-McLabel $app 'Analysis complete*##status' 60000
+    Write-Host "status: $($st.label)"
+    Invoke-AutoClick $app 'Files##viewFiles'; $null = Invoke-AutoFrames $app 3
+    Shot 'cleaner-files'
+    Invoke-AutoClick $app 'Run Cleaner##clean'
+    $null = Wait-McLabel $app 'Cleaning...##status' 5000
+    Start-Sleep -Milliseconds 800
+    $left = @(Get-ChildItem $junk -File).Count
+    Write-Host "files left when closing: $left of 100"
+    $sw = [Diagnostics.Stopwatch]::StartNew()
+    $null = $app.Process.CloseMainWindow()
+    $exited = $app.Process.WaitForExit(5000)
+    $sw.Stop()
+    $after = @(Get-ChildItem $junk -File).Count
+    Write-Host ("exit after {0} ms, exit code {1}, files left after exit: {2}" -f $sw.ElapsedMilliseconds, $(if ($exited) { $app.Process.ExitCode } else { '-' }), $after)
+    Check $exited 'closing during Run Cleaner exits within 5 s'
+    Check ($app.Process.ExitCode -eq 0) 'exit code 0'
+    Check ($after -gt 0) 'the clean was still running when the process ended (files left)'
+    Check ((Get-Content $sb.Ini) -contains 'Custom Files and Folders=True') 'ticks saved before the early exit'
     Write-Host 'G1 GUI TEST OK'
 } catch {
     Write-Host "ERROR: $($_.Exception.Message) at line $($_.InvocationInfo.ScriptLineNumber)"
@@ -237,16 +280,8 @@ try {
     throw
 } finally {
     $ErrorActionPreference = 'Continue'
-    if ($app -and -not $app.Process.HasExited) { $null = Stop-AutoApp $app }
     if ($fakeEdge) { Stop-Process -Id $fakeEdge.Id -Force -ErrorAction SilentlyContinue }
-    foreach ($n in $fixNames) { try { $mui.DeleteValue($n, $false) } catch { } }
+    foreach ($n in $fixNames + $fixNames2) { try { $mui.DeleteValue($n, $false) } catch { } }
     $mui.Close()
-    Start-Sleep -Milliseconds 300
-    Remove-Item -Recurse -Force $T -ErrorAction SilentlyContinue
-    # BMP -> PNG
-    $py = "import sys,glob,os`nfrom PIL import Image`nfor b in glob.glob(os.path.join(sys.argv[1],'MC-G1-*.bmp')):`n    Image.open(b).save(b[:-4]+'.png'); os.remove(b)"
-    $pyFile = Join-Path ([IO.Path]::GetTempPath()) "g1-bmp2png-$rnd.py"
-    Set-Content $pyFile $py -Encoding Ascii
-    foreach ($v in @('-3.12', '-3.10')) { & py $v -c 'import PIL' 2>$null; if ($LASTEXITCODE -eq 0) { & py $v $pyFile $Shots; break } }
-    Remove-Item $pyFile -ErrorAction SilentlyContinue
+    Remove-McSandbox $sb $app
 }

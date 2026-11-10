@@ -17,8 +17,6 @@ const im = kit.im;
 const App = kit.app.App;
 const pal = kit.app.palettes.cleaner;
 
-pub const version = ctx_mod.version;
-
 pub fn main(init: std.process.Init) !u8 {
     const gpa = init.gpa;
     const io = init.io;
@@ -141,7 +139,7 @@ fn frame(app: *App) void {
     const top = pos.y + body_h;
     im.ImDrawList_AddRectFilled(dl, .{ .x = pos.x, .y = top }, .{ .x = pos.x + size.x, .y = pos.y + size.y }, kit.app.colorU32(pal.surface));
     im.ImDrawList_AddLine(dl, .{ .x = pos.x, .y = top }, .{ .x = pos.x + size.x, .y = top }, kit.app.colorU32(pal.line));
-    const footer = "MakeCleaner " ++ version ++ "  \u{00B7}  no telemetry, no ads, no network access";
+    const footer = "MakeCleaner " ++ ctx_mod.version ++ "\u{00B7}  no telemetry, no ads, no network access";
     im.ImDrawList_AddTextImFontPtr(dl, app.fonts.regular, 12 * sc, .{ .x = pos.x + 12 * sc, .y = top + 6 * sc }, kit.app.colorU32(pal.muted), footer);
     // About link on the right -> themed info dialog
     const about_w = im.ImGui_CalcTextSize("About").x;

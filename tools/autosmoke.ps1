@@ -1,7 +1,7 @@
 # Smoke for MakeCleaner /auto: sandbox copy (portable) with only Temporary Files ticked (+ Wipe Free Space, which
 # /auto must ignore), TEMP/AppData pointed at fixtures. Runs the exe headless, checks exit code, fixture emptied, no
-# window, log line. Then opens the GUI on Options > Schedule and reads the scheduled-cleaning status (never clicks
-# Create: that would register a real task). MakeKit automation pipe. Pure ASCII (PS 5.1).
+# window, log line. Then opens the GUI on Options > Schedule, reads the scheduled-cleaning status and clicks Create
+# only with an invalid start time (refused before any task call; a valid one would register a real task). MakeKit automation pipe. Pure ASCII (PS 5.1).
 param([int]$Screen = 1, [string]$BinDir = '', [string]$Shot = "$env:TEMP\makecleaner-schedule.png")
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
@@ -29,9 +29,13 @@ try {
     $st = Get-McText $app 'schedStatus'
     for ($i = 0; $i -lt 50 -and -not $st; $i++) { $null = Invoke-AutoFrames $app 2; Start-Sleep -Milliseconds 100; $st = Get-McText $app 'schedStatus' }
     Write-Host "schedule status: $st"
+    Set-McText $app '##schedAt' 'bad'
+    Invoke-AutoClick $app 'Create task##schedCreate'; $null = Invoke-AutoFrames $app 2
+    $bad = Get-McText $app 'schedStatus'
+    Write-Host "bad time: $bad"
     Save-McShot $app $Shot
     $code = Close-McApp $app
-    if ($st -notlike '*scheduled cleaning*' -or $code -ne 0) { throw 'SMOKE FAILED' }
+    if ($st -notlike '*scheduled cleaning*' -or $bad -ne 'Start time format: yyyy-MM-dd HH:mm' -or $code -ne 0) { throw 'SMOKE FAILED' }
     Write-Host 'SMOKE OK'
 } finally {
     Remove-McSandbox $sb $app

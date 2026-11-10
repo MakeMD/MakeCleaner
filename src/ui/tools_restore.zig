@@ -20,8 +20,7 @@ pub const View = struct {
     points: []Point = &.{},
     sel: ?usize = null,
     show_admin: bool = false,
-    status_buf: [300]u8 = undefined,
-    status_len: usize = 0,
+    status: ui.Text(300) = .{},
     /// Remove: the worker removes `remove_seq` (WMI/srclient, can be slow) before listing again; `remove_rc` is
     /// shown after the reload (Reload overwrites the status first, as in C#).
     remove_seq: ?u32 = null,
@@ -41,11 +40,6 @@ pub const View = struct {
         v.arena.deinit();
         v.next_arena.deinit();
         ctx.gpa.destroy(v);
-    }
-
-    fn setStatus(v: *View, comptime fmt: []const u8, args: anytype) void {
-        const t: []const u8 = std.mem.print(&v.status_buf, fmt, args) catch &v.status_buf;
-        v.status_len = t.len;
     }
 
     fn reload(v: *View) void {
@@ -79,15 +73,15 @@ pub const View = struct {
             if (v.job.errorText(&eb)) |e| {
                 v.points = &.{};
                 if (std.mem.eql(u8, e, "AccessDenied")) {
-                    v.setStatus("Administrator rights are required to list restore points.", .{});
+                    v.status.set("Administrator rights are required to list restore points.", .{});
                     v.show_admin = true;
-                } else v.setStatus("System Restore unavailable: {s}", .{e});
+                } else v.status.set("System Restore unavailable: {s}", .{e});
             } else {
                 std.mem.swap(std.heap.ArenaAllocator, &v.arena, &v.next_arena);
                 _ = v.next_arena.reset(.free_all);
                 v.points = v.next_points;
-                if (v.points.len == 0) v.setStatus("No restore points.", .{}) else v.setStatus("{d} restore point(s). The most recent one cannot be removed.", .{v.points.len});
-                if (v.remove_rc != 0) v.setStatus("Removing failed (error {d}).", .{v.remove_rc});
+                if (v.points.len == 0) v.status.set("No restore points.", .{}) else v.status.set("{d} restore point(s). The most recent one cannot be removed.", .{v.points.len});
+                if (v.remove_rc != 0) v.status.set("Removing failed (error {d}).", .{v.remove_rc});
             }
             v.remove_rc = 0;
         }
@@ -96,7 +90,7 @@ pub const View = struct {
                 if (ui.requireAdmin(&v.dlg, tag_admin, "Removing a restore point")) if (v.picked()) |p| {
                     if (v.job.thread == null) {
                         v.remove_seq = p.seq;
-                        v.setStatus("Removing restore point...", .{});
+                        v.status.set("Removing restore point...", .{});
                         v.reload();
                     }
                 };
@@ -136,6 +130,6 @@ pub const View = struct {
             im.ImGui_SetItemTooltipUnformatted("Restart MakeCleaner as administrator");
         }
         im.ImGui_EndGroup();
-        ui.status("rpStatus", if (v.job.isRunning() and v.status_len == 0) "Loading..." else v.status_buf[0..v.status_len], ui.pal.text);
+        ui.status("rpStatus", if (v.job.isRunning() and v.status.len == 0) "Loading..." else v.status.slice(), ui.pal.text);
     }
 };

@@ -53,14 +53,13 @@ test idLabel {
 pub const table_flags = im.ImGuiTableFlags_ScrollY | im.ImGuiTableFlags_Resizable | im.ImGuiTableFlags_NoBordersInBody |
     im.ImGuiTableFlags_BordersOuter | im.ImGuiTableFlags_SizingStretchProp;
 
-/// Full `text` as a tooltip on hover of the last item.
+/// Full `text` as a tooltip (wrapped at 600 px) on hover of the last item.
 pub fn tip(text: []const u8) void {
-    if (!im.ImGui_IsItemHovered(im.ImGuiHoveredFlags_ForTooltip)) return;
-    var b: [1100]u8 = undefined;
-    const n = @min(text.len, b.len - 1);
-    @memcpy(b[0..n], text[0..n]);
-    b[n] = 0;
-    im.ImGui_SetTooltipUnformatted(&b);
+    if (!im.ImGui_IsItemHovered(im.ImGuiHoveredFlags_ForTooltip) or !im.ImGui_BeginTooltip()) return;
+    im.ImGui_PushTextWrapPos(600 * scale());
+    im.ImGui_TextUnformattedEx(text.ptr, text.ptr + text.len);
+    im.ImGui_PopTextWrapPos();
+    im.ImGui_EndTooltip();
 }
 
 /// Text width (no wrap).
@@ -169,13 +168,22 @@ pub fn check(lbl: [*:0]const u8, v: *bool) bool {
     return im.ImGui_Checkbox(lbl, v);
 }
 
-/// Primary (accent) button, like the "Primary" style.
-pub fn primary(text: [*:0]const u8, enabled: bool) bool {
+/// Accent colours of the "Primary" button style; pair with popPrimary.
+pub fn pushPrimary() void {
     im.ImGui_PushStyleColorImVec4(im.ImGuiCol_Button, col(pal.accent));
     im.ImGui_PushStyleColorImVec4(im.ImGuiCol_ButtonHovered, col(pal.accent_dark));
     im.ImGui_PushStyleColorImVec4(im.ImGuiCol_ButtonActive, col(pal.accent_dark));
     im.ImGui_PushStyleColorImVec4(im.ImGuiCol_Text, col(0xFFFFFF));
-    defer im.ImGui_PopStyleColorEx(4);
+}
+
+pub fn popPrimary() void {
+    im.ImGui_PopStyleColorEx(4);
+}
+
+/// Primary (accent) button, like the "Primary" style.
+pub fn primary(text: [*:0]const u8, enabled: bool) bool {
+    pushPrimary();
+    defer popPrimary();
     return button(text, enabled);
 }
 
@@ -189,23 +197,45 @@ pub fn colWidth() f32 {
     return (160 + 12) * scale();
 }
 
-/// Labelled status line ("text##id"): an invisible item carrying the text for automation, with the text
-/// drawn over it (wrapped to the available width).
+/// Text that automation can read: an invisible item "text##id" with the text drawn over it (plain TextUnformatted
+/// is not an item, notes K8). `wrap_w` > 0 wraps at that width; `full_width` makes the item exactly `wrap_w` wide
+/// (so widgets can follow on the same line), else it hugs the text.
+pub fn textItem(id: []const u8, text: []const u8, rgb: u32, wrap_w: f32, full_width: bool) void {
+    var buf: [1100]u8 = undefined;
+    const end = text.ptr + text.len;
+    var size = im.ImGui_CalcTextSizeEx(text.ptr, end, false, if (wrap_w > 0) wrap_w else -1);
+    if (full_width) size.x = wrap_w;
+    size.x = @max(1, size.x);
+    size.y = @max(size.y, im.ImGui_GetFontSize());
+    const pos = im.ImGui_GetCursorScreenPos();
+    _ = im.ImGui_InvisibleButton(idLabel(&buf, text, "{s}", .{id}).ptr, size, 0);
+    if (text.len > 0) im.ImDrawList_AddTextImFontPtrEx(im.ImGui_GetWindowDrawList(), im.ImGui_GetFont(), im.ImGui_GetFontSize(), pos, kit.app.colorU32(rgb), text.ptr, end, @max(0, wrap_w), null);
+}
+
+/// Labelled status line ("text##id") wrapped to the available width.
 pub fn status(id: []const u8, text: []const u8, rgb: u32) void {
     statusIn(id, text, rgb, im.ImGui_GetContentRegionAvail().x);
 }
 
 /// `status` occupying exactly `width` (text wrapped to it), so widgets can follow on the same line.
 pub fn statusIn(id: []const u8, text: []const u8, rgb: u32, width: f32) void {
-    var buf: [1100]u8 = undefined;
-    const lbl = idLabel(&buf, text, "{s}", .{id});
-    const wrap = @max(50, width);
-    var size = im.ImGui_CalcTextSizeEx(text.ptr, text.ptr + text.len, false, wrap);
-    size.x = wrap;
-    size.y = @max(size.y, im.ImGui_GetFontSize());
-    const pos = im.ImGui_GetCursorScreenPos();
-    _ = im.ImGui_InvisibleButton(lbl.ptr, size, 0);
-    if (text.len > 0) im.ImDrawList_AddTextImFontPtrEx(im.ImGui_GetWindowDrawList(), im.ImGui_GetFont(), im.ImGui_GetFontSize(), pos, kit.app.colorU32(rgb), text.ptr, text.ptr + text.len, wrap, null);
+    textItem(id, text, rgb, @max(50, width), true);
+}
+
+/// Fixed-size text of a view's status line: `set` formats into it (cut when too long), `slice` reads it.
+pub fn Text(comptime n: usize) type {
+    return struct {
+        buf: [n]u8 = undefined,
+        len: usize = 0,
+
+        pub fn set(t: *@This(), comptime fmt: []const u8, args: anytype) void {
+            const out: []const u8 = std.mem.print(&t.buf, fmt, args) catch &t.buf;
+            t.len = out.len;
+        }
+        pub fn slice(t: *const @This()) []const u8 {
+            return t.buf[0..t.len];
+        }
+    };
 }
 
 // ---------------------------------------------------------------- sub-navigation (SubNavPage)
@@ -420,27 +450,6 @@ pub fn writeLines(io: std.Io, path: []const u8, lines: []const []const u8) !void
     try fw.interface.flush();
 }
 
-// ---------------------------------------------------------------- file system probes
-
-pub fn attrs(path: []const u8) ?u32 {
-    var wb: [32768]u16 = undefined;
-    const n = std.unicode.wtf8ToWtf16Le(&wb, path) catch return null;
-    if (n >= wb.len) return null;
-    wb[n] = 0;
-    const a = w.GetFileAttributesW(@ptrCast(&wb));
-    return if (a == w.INVALID_FILE_ATTRIBUTES) null else a;
-}
-
-pub fn isDir(path: []const u8) bool {
-    const a = attrs(path) orelse return false;
-    return a & w.FILE_ATTRIBUTE_DIRECTORY != 0;
-}
-
-pub fn isFile(path: []const u8) bool {
-    const a = attrs(path) orelse return false;
-    return a & w.FILE_ATTRIBUTE_DIRECTORY == 0;
-}
-
 // ---------------------------------------------------------------- dates (user locale, like ToString("g"))
 
 fn fmtSystemTime(buf: []u8, st: *const w.SYSTEMTIME, with_time: bool) []const u8 {
@@ -487,34 +496,88 @@ pub fn fmtUtc(buf: []u8, y: u16, mo: u8, d: u8, h: u8, mi: u8) []const u8 {
     return fmtSystemTime(buf, &local, true);
 }
 
-/// "yyyyMMdd" -> short date in the user's locale; anything else unchanged (UninstallView.FmtDate).
-pub fn fmtYmd(buf: []u8, s: []const u8) []const u8 {
-    if (s.len != 8) return s;
-    const y = std.fmt.parseInt(u16, s[0..4], 10) catch return s;
-    const m = std.fmt.parseInt(u8, s[4..6], 10) catch return s;
-    const d = std.fmt.parseInt(u8, s[6..8], 10) catch return s;
+/// Registry InstallDate -> short date in the user's locale (UninstallView.FmtDate); unparsable text unchanged.
+pub fn fmtInstallDate(buf: []u8, s: []const u8) []const u8 {
+    const y, const m, const d = parseInstallDate(s) orelse return s;
     if (m < 1 or m > 12 or d < 1 or d > 31 or y < 1601) return s;
-    const st = systemTime(y, m, d, 0, 0);
+    const st = systemTime(y, @intCast(m), @intCast(d), 0, 0);
     var ft: w.FILETIME = undefined;
     if (w.SystemTimeToFileTime(&st, &ft) == 0) return s; // 20240231 etc.
     const out = fmtSystemTime(buf, &st, false);
     return if (out.len == 0) s else out;
 }
 
-/// N0: 12345 -> "12,345".
-pub fn grouped(buf: []u8, n: u64) []const u8 {
+/// y, m, d of "yyyyMMdd" (the documented form) or of what some installers write instead: "yyyy-M-d",
+/// "M/d/yyyy", "d.M.yyyy". The C# FmtDate took only yyyyMMdd and showed the rest raw, so one list mixed formats.
+fn parseInstallDate(s: []const u8) ?[3]u16 {
+    const i = std.mem.findAny(u8, s, "-/.") orelse
+        return if (s.len == 8) .{ num(s[0..4]) orelse return null, num(s[4..6]) orelse return null, num(s[6..8]) orelse return null } else null;
+    const sep = s[i];
+    var f: [3]u16 = undefined;
+    var it = std.mem.splitScalar(u8, s, sep);
+    for (&f) |*x| x.* = num(it.next() orelse return null) orelse return null;
+    if (it.next() != null) return null;
+    return switch (sep) {
+        '-' => f,
+        '/' => .{ f[2], f[0], f[1] },
+        else => .{ f[2], f[1], f[0] },
+    };
+}
+
+fn num(s: []const u8) ?u16 {
+    for (s) |c| if (!std.ascii.isDigit(c)) return null;
+    return if (s.len == 0 or s.len > 4) null else std.fmt.parseInt(u16, s, 10) catch null;
+}
+
+test parseInstallDate {
+    const t = std.testing;
+    try t.expectEqual([3]u16{ 2025, 5, 7 }, parseInstallDate("20250507").?);
+    try t.expectEqual([3]u16{ 2025, 5, 7 }, parseInstallDate("5/7/2025").?);
+    try t.expectEqual([3]u16{ 2025, 5, 7 }, parseInstallDate("07.05.2025").?);
+    try t.expectEqual([3]u16{ 2025, 5, 7 }, parseInstallDate("2025-05-07").?);
+    try t.expectEqual(null, parseInstallDate("2025050"));
+    try t.expectEqual(null, parseInstallDate("5/7"));
+    try t.expectEqual(null, parseInstallDate("1/2/3/4"));
+    try t.expectEqual(null, parseInstallDate("+5/7/2025"));
+}
+
+/// .NET "N0" (en-US): 1234567 -> "1,234,567".
+pub fn n0(buf: []u8, n: u64) []const u8 {
     var tmp: [32]u8 = undefined;
     const digits = std.mem.print(&tmp, "{d}", .{n}) catch return "";
     var o: usize = 0;
     for (digits, 0..) |c, i| {
         if (i > 0 and (digits.len - i) % 3 == 0) {
+            if (o >= buf.len) return buf[0..o];
             buf[o] = ',';
             o += 1;
         }
+        if (o >= buf.len) return buf[0..o];
         buf[o] = c;
         o += 1;
     }
     return buf[0..o];
+}
+
+test n0 {
+    var b: [32]u8 = undefined;
+    try std.testing.expectEqualStrings("0", n0(&b, 0));
+    try std.testing.expectEqualStrings("999", n0(&b, 999));
+    try std.testing.expectEqualStrings("1,000", n0(&b, 1000));
+    try std.testing.expectEqualStrings("12,345,678", n0(&b, 12345678));
+}
+
+/// .NET "0.#": one decimal, "12" rather than "12.0".
+pub fn fmt01(buf: []u8, x: f64) []const u8 {
+    const r = @round(x * 10) / 10;
+    return (if (r == @trunc(r)) std.mem.print(buf, "{d}", .{@as(i64, @intFromFloat(r))}) else std.mem.print(buf, "{d:.1}", .{r})) catch "";
+}
+
+test fmt01 {
+    var b: [32]u8 = undefined;
+    try std.testing.expectEqualStrings("12", fmt01(&b, 12.04));
+    try std.testing.expectEqualStrings("12.5", fmt01(&b, 12.46));
+    try std.testing.expectEqualStrings("0", fmt01(&b, 0));
 }
 
 /// Case-insensitive "contains" in the user's locale (CurrentCultureIgnoreCase). Empty needle = true.
@@ -535,14 +598,9 @@ pub fn jobProgress(job: *kit.jobs.Job) @import("../core/common.zig").Progress(us
     }.f };
 }
 
-/// UI: true once a started job finished; joins it.
+/// UI: true once a started job finished; joins it (isFinished alone stays true after the join).
 pub fn jobDone(job: *kit.jobs.Job) bool {
     if (job.thread == null or !job.isFinished()) return false;
     job.join();
     return true;
-}
-
-/// Ms clock for the 200 ms progress sampling.
-pub fn nowMs() u64 {
-    return w.GetTickCount64();
 }

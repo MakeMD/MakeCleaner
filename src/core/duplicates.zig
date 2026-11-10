@@ -30,25 +30,7 @@ pub const DupOptions = struct {
 /// record DupResult(Groups, Hashed).
 pub const DupResult = struct { groups: []const []const FileInfo, hashed: usize };
 
-/// FNV-1a over ASCII-lowered bytes, non-ASCII skipped, so keys equal under OrdinalIgnoreCase share a bucket
-/// (same trick as settings.zig); `eql` does the real compare.
-fn foldHash(s: []const u8, seed: u32) u32 {
-    var h: u32 = seed;
-    for (s) |c| if (c < 0x80) {
-        h ^= std.ascii.toLower(c);
-        h *%= 16777619;
-    };
-    return h;
-}
-
-const PathSet = std.array_hash_map.Custom([]const u8, void, struct {
-    pub fn hash(_: @This(), s: []const u8) u32 {
-        return foldHash(s, 2166136261);
-    }
-    pub fn eql(_: @This(), a: []const u8, b: []const u8, _: usize) bool {
-        return common.eqlIgnoreCase(a, b);
-    }
-}, true);
+const PathSet = common.IgnoreCaseMap(void);
 
 /// GroupBy key: (Name upper-cased, Size, Date); unused parts are constant.
 const Key = struct { name: []const u8, size: u64, date: i96 };
@@ -60,7 +42,7 @@ fn Groups(comptime K: type, comptime Ctx: type) type {
 
 const KeyCtx = struct {
     pub fn hash(_: KeyCtx, k: Key) u32 {
-        return foldHash(k.name, 2166136261) ^ @as(u32, @truncate(k.size *% 0x9E3779B97F4A7C15)) ^ @as(u32, @truncate(@as(u96, @bitCast(k.date)) *% 0x9E3779B97F4A7C15));
+        return common.NameContext.hash(.{}, k.name) ^ @as(u32, @truncate(k.size *% 0x9E3779B97F4A7C15)) ^ @as(u32, @truncate(@as(u96, @bitCast(k.date)) *% 0x9E3779B97F4A7C15));
     }
     pub fn eql(_: KeyCtx, a: Key, b: Key, _: usize) bool {
         return a.size == b.size and a.date == b.date and common.eqlIgnoreCase(a.name, b.name);

@@ -5,6 +5,7 @@
 const std = @import("std");
 const kit = @import("kit");
 const g = @import("g1_common.zig");
+const ui = @import("tools_ui.zig");
 const regcleaner = @import("../core/regcleaner.zig");
 
 const im = kit.im;
@@ -72,18 +73,18 @@ pub const Fix = struct {
     /// Draws the modal; true once when it closed.
     pub fn draw(f: *Fix) bool {
         if (!f.open) return false;
-        const s = g.scale();
+        const s = ui.scale();
         if (f.want_open) {
             _ = im.ImGui_OpenPopup(title, 0);
             f.want_open = false;
         }
-        if (g.ended(&f.job)) f.finishApply();
+        if (ui.jobDone(&f.job)) f.finishApply();
         const busy = f.job.isRunning();
 
         const vp = im.ImGui_GetMainViewport();
         im.ImGui_SetNextWindowPosEx(im.ImGuiViewport_GetCenter(vp), im.ImGuiCond_Appearing, .{ .x = 0.5, .y = 0.5 });
         im.ImGui_SetNextWindowSizeConstraints(.{ .x = 560 * s, .y = 0 }, .{ .x = 560 * s, .y = 10000 }, null, null);
-        im.ImGui_PushStyleColorImVec4(im.ImGuiCol_PopupBg, g.col(pal.bg));
+        im.ImGui_PushStyleColorImVec4(im.ImGuiCol_PopupBg, ui.col(pal.bg));
         im.ImGui_PushStyleVarImVec2(im.ImGuiStyleVar_WindowPadding, .{ .x = 18 * s, .y = 18 * s });
         var keep = true;
         const visible = im.ImGui_BeginPopupModal(title, if (busy) null else &keep, im.ImGuiWindowFlags_AlwaysAutoResize | im.ImGuiWindowFlags_NoSavedSettings);
@@ -108,7 +109,7 @@ pub const Fix = struct {
         const cy = im.ImGui_GetCursorPosY();
         im.ImGui_SetCursorPosY(cy + (32 * s - im.ImGui_GetFontSize()) / 2);
         im.ImGui_PushFontFloat(g.boldFont(), 0);
-        g.label(counter, "regcounter", 0, pal.text);
+        ui.textItem("regcounter", counter, pal.text, 0, false);
         im.ImGui_PopFont();
         im.ImGui_SameLine();
         im.ImGui_SetCursorPosY(cy);
@@ -123,7 +124,7 @@ pub const Fix = struct {
         const details: []const u8 = std.mem.print(&dbuf, "Problem: {s}\nData: {s}\nRegistry key: {s}\n\nSolution: delete the registry {s}.", .{
             x.problem, x.data, target orelse x.key_path, if (x.value_name == null) "key" else "value",
         }) catch "";
-        g.label(details, "regdetails", im.ImGui_GetContentRegionAvail().x, pal.text);
+        ui.textItem("regdetails", details, pal.text, im.ImGui_GetContentRegionAvail().x, false);
         im.ImGui_Dummy(.{ .x = 0, .y = 6 * s });
 
         // Fix Issue / Fix All Selected / Close

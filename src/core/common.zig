@@ -82,6 +82,34 @@ fn isAscii(s: []const u8) bool {
     return true;
 }
 
+/// Dictionary/HashSet<string>(StringComparer.OrdinalIgnoreCase) in insertion order (rule names, paths, ini keys).
+pub fn IgnoreCaseMap(comptime V: type) type {
+    return std.array_hash_map.Custom([]const u8, V, NameContext, true);
+}
+
+/// The hash folds case with the OS upcase table (the one CompareStringOrdinal uses), so all-Cyrillic names do
+/// not pile into one bucket; eql is the Unicode-correct compare.
+pub const NameContext = struct {
+    pub fn hash(_: NameContext, s: []const u8) u32 {
+        var h: u32 = 2166136261;
+        if (std.unicode.wtf8ValidateSlice(s)) {
+            var it = std.unicode.Wtf8View.initUnchecked(s).iterator();
+            while (it.nextCodepoint()) |cp| {
+                const up: u32 = if (cp < 0x80) std.ascii.toUpper(@intCast(cp)) else if (cp <= 0xFFFF) RtlUpcaseUnicodeChar(@intCast(cp)) else cp;
+                h = (h ^ up) *% 16777619;
+            }
+        } else for (s) |c| if (c < 0x80) { // eql never matches such a key with another anyway
+            h = (h ^ std.ascii.toUpper(c)) *% 16777619;
+        };
+        return h;
+    }
+    pub fn eql(_: NameContext, a: []const u8, b: []const u8, _: usize) bool {
+        return eqlIgnoreCase(a, b);
+    }
+};
+
+extern "ntdll" fn RtlUpcaseUnicodeChar(c: u16) callconv(.winapi) u16;
+
 fn foldCompare(a: []const u8, b: []const u8, prefix: bool) bool {
     var stack: [4096]u8 = undefined;
     var bfa: std.heap.BufferFirstAllocator = .init(&stack, std.heap.page_allocator);
@@ -151,10 +179,7 @@ pub const TempDir = struct {
     path: []u8,
 
     pub fn create(gpa: Allocator, io: Io, tag: []const u8) !TempDir {
-        var buf: [w.MAX_PATH + 1]u16 = undefined;
-        const n = w.GetTempPathW(buf.len, &buf);
-        if (n == 0 or n > buf.len) return error.Unexpected;
-        const tmp = try win.fromW(gpa, buf[0..n]);
+        const tmp = try tempPath(gpa);
         defer gpa.free(tmp);
         var rnd: [8]u8 = undefined;
         io.random(&rnd);

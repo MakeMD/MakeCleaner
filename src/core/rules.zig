@@ -200,38 +200,10 @@ pub fn parseIni(arena: Allocator, text: []const u8) ![]Rule {
     return list.toOwnedSlice(arena);
 }
 
-/// Dictionary/HashSet<string>(StringComparer.OrdinalIgnoreCase) in insertion order (rule names, paths).
-pub fn IgnoreCaseMap(comptime V: type) type {
-    return std.array_hash_map.Custom([]const u8, V, NameContext, true);
-}
-
-/// The hash folds case with the OS upcase table (the one CompareStringOrdinal uses), so all-Cyrillic names do
-/// not pile into one bucket; eql is the Unicode-correct compare.
-pub const NameContext = struct {
-    pub fn hash(_: NameContext, s: []const u8) u32 {
-        var h: u32 = 2166136261;
-        if (std.unicode.wtf8ValidateSlice(s)) {
-            var it = std.unicode.Wtf8View.initUnchecked(s).iterator();
-            while (it.nextCodepoint()) |cp| {
-                const up: u32 = if (cp < 0x80) std.ascii.toUpper(@intCast(cp)) else if (cp <= 0xFFFF) RtlUpcaseUnicodeChar(@intCast(cp)) else cp;
-                h = (h ^ up) *% 16777619;
-            }
-        } else for (s) |c| if (c < 0x80) { // eql never matches such a key with another anyway
-            h = (h ^ std.ascii.toUpper(c)) *% 16777619;
-        };
-        return h;
-    }
-    pub fn eql(_: NameContext, a: []const u8, b: []const u8, _: usize) bool {
-        return common.eqlIgnoreCase(a, b);
-    }
-};
-
-extern "ntdll" fn RtlUpcaseUnicodeChar(c: u16) callconv(.winapi) u16;
-
 /// Rule.LoadApplications: exe_dir\rules\Winapp2.ini + optional exe_dir\winapp2.ini (user entries override by
 /// name), detected ones only, ordered by group then name.
 pub fn loadApplications(arena: Allocator, io: Io, exe_dir: []const u8) ![]Rule {
-    var by_name: IgnoreCaseMap(Rule) = .empty;
+    var by_name: common.IgnoreCaseMap(Rule) = .empty;
     for ([_][]const []const u8{ &.{ exe_dir, "rules", "Winapp2.ini" }, &.{ exe_dir, "winapp2.ini" } }) |parts| {
         const file = try Io.Dir.path.join(arena, parts);
         const raw = Io.Dir.cwd().readFileAlloc(io, file, arena, .unlimited) catch |e| switch (e) {

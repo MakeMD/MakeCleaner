@@ -1,6 +1,7 @@
 # GUI smoke for Tools (Drive Wiper, System Restore) and Options > Settings: sandbox copy (portable), TEMP/AppData
 # pointed at fixtures. Opens each page over the MakeKit automation pipe, ticks the first drive to show warnings (then
-# unticks it), takes screenshots. NEVER clicks Wipe / Remove / Erase / Restart as admin. Pure ASCII (PS 5.1).
+# unticks it), takes screenshots. Clicks Wipe only while no drive is ticked (the 'Select at least one drive.' check);
+# NEVER Remove / Erase / Restart as admin. Options > Settings: secure delete 3 passes + TempOlderThan24h are saved. Pure ASCII (PS 5.1).
 param([int]$Screen = 1, [string]$BinDir = '', [string]$ShotDir = $env:TEMP)
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
@@ -26,7 +27,13 @@ try {
     }
     Write-Host ("drives listed: " + $drives.Count + " -> " + (($drives | ForEach-Object { $_.label -replace '##drive\d+$', '' }) -join ' | '))
     if ($drives.Count -eq 0) { $fail += 'no drives' }
-    else {
+    elseif (@($drives | Where-Object { $_.checked }).Count -eq 0) {
+        Invoke-AutoClick $app 'Wipe##wipe'; $null = Invoke-AutoFrames $app 2
+        $none = Get-McText $app 'wipeProgress'
+        Write-Host "wipe with no drive: $none"
+        if ($none -ne 'Select at least one drive.') { $fail += "no-drive message ($none)" }
+    }
+    if ($drives.Count -gt 0) {
         Invoke-AutoClick $app $drives[0].label; $null = Invoke-AutoFrames $app 3
         if (-not (Wait-AutoItem $app $drives[0].label).checked) { $fail += 'drive tick did not stick' }
     }
@@ -46,6 +53,10 @@ try {
     $sd = Get-McText $app 'secureDelete' # combo button 'chosen method##secureDelete'
     Write-Host ("secure delete combo: " + $sd)
     if ($null -eq $sd) { $fail += 'secure delete combo missing' } elseif (-not $sd) { $fail += 'secure delete combo has no selection' }
+    Invoke-AutoClick $app '##secureDelete'; Invoke-AutoClick $app '##secureDelete2'; Invoke-AutoClick $app '##TempOlderThan24h'
+    $null = Invoke-AutoFrames $app 2
+    $ini = [IO.File]::ReadAllText($sb.Ini)
+    if ($ini -notmatch 'SecureDeletePasses=3' -or $ini -notmatch 'TempOlderThan24h=True') { $fail += 'settings not saved' }
     Save-McShot $app (Join-Path $ShotDir 'makecleaner-options.png')
 
     $code = Close-McApp $app

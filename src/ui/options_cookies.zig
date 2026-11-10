@@ -22,8 +22,7 @@ pub const View = struct {
     anchor_all: ?usize = null,
     anchor_keep: ?usize = null,
     domain: ui.Buf(256) = .{},
-    st_buf: [300]u8 = undefined,
-    st_len: usize = 0,
+    status: ui.Text(300) = .{},
 
     pub fn create(ctx: *Ctx) !*View {
         const v = try ctx.gpa.create(View);
@@ -42,15 +41,10 @@ pub const View = struct {
         ctx.gpa.destroy(v);
     }
 
-    fn setStatus(v: *View, comptime fmt: []const u8, args: anytype) void {
-        const t: []const u8 = std.mem.print(&v.st_buf, fmt, args) catch &v.st_buf;
-        v.st_len = t.len;
-    }
-
     fn scan(v: *View) void {
         if (v.job.thread != null) return;
         _ = v.next_arena.reset(.free_all);
-        v.setStatus("Reading cookies from browsers...", .{});
+        v.status.set("Reading cookies from browsers...", .{});
         v.job.start(v, worker) catch {};
     }
 
@@ -76,7 +70,7 @@ pub const View = struct {
         ctx.settings.save(ctx.io) catch {};
         v.clearSel();
         // the scan's status line, kept current (C# left it stale after Keep / Remove)
-        if (!v.job.isRunning()) v.setStatus("{d} domains with cookies, {d} kept", .{ v.found.len, parsed.len });
+        if (!v.job.isRunning()) v.status.set("{d} domains with cookies, {d} kept", .{ v.found.len, parsed.len });
         return parsed.len;
     }
 
@@ -114,7 +108,7 @@ pub const View = struct {
         if (ui.jobDone(&v.job)) {
             var eb: [256]u8 = undefined;
             if (v.job.errorText(&eb)) |e| {
-                v.setStatus("Could not read cookies: {s}", .{e});
+                v.status.set("Could not read cookies: {s}", .{e});
             } else {
                 std.mem.swap(std.heap.ArenaAllocator, &v.arena, &v.next_arena);
                 _ = v.next_arena.reset(.free_all);
@@ -122,7 +116,7 @@ pub const View = struct {
                 v.clearSel();
                 const k = kept(ctx);
                 defer ctx.gpa.free(k);
-                v.setStatus("{d} domains with cookies, {d} kept", .{ v.found.len, k.len });
+                v.status.set("{d} domains with cookies, {d} kept", .{ v.found.len, k.len });
             }
         }
 
@@ -179,7 +173,7 @@ pub const View = struct {
         if (ui.button("Export...##cookieExport", true)) v.exportList(ctx);
         im.ImGui_Dummy(.{ .x = 0, .y = 4 * s });
         im.ImGui_PushFontFloat(ctx.app.fonts.bold, 0);
-        ui.status("cookieStatus", v.st_buf[0..v.st_len], ui.pal.text);
+        ui.status("cookieStatus", v.status.slice(), ui.pal.text);
         im.ImGui_PopFont();
     }
 
@@ -214,7 +208,7 @@ pub const View = struct {
     fn add(v: *View, ctx: *Ctx) void {
         const parsed = cookies.parse(ctx.gpa, v.domain.slice()) catch return;
         defer cookies.freeList(ctx.gpa, parsed);
-        if (parsed.len != 1 or !validDomain(parsed[0])) return v.setStatus("Enter a domain like example.com.", .{});
+        if (parsed.len != 1 or !validDomain(parsed[0])) return v.status.set("Enter a domain like example.com.", .{});
         const k = kept(ctx);
         defer ctx.gpa.free(k);
         var list: std.ArrayList([]const u8) = .empty;
@@ -223,7 +217,7 @@ pub const View = struct {
         list.append(ctx.gpa, parsed[0]) catch return;
         _ = v.saveList(ctx, list.items);
         v.domain.set("");
-        v.setStatus("Keeping cookies of {s} and its subdomains.", .{parsed[0]});
+        v.status.set("Keeping cookies of {s} and its subdomains.", .{parsed[0]});
     }
 
     fn import(v: *View, ctx: *Ctx) void {
@@ -233,7 +227,7 @@ pub const View = struct {
         } }) catch null) orelse return;
         defer kit.win.freeList(ctx.gpa, files);
         if (files.len == 0) return;
-        const text = std.Io.Dir.cwd().readFileAlloc(ctx.io, files[0], ctx.gpa, .limited(16 << 20)) catch |e| return v.setStatus("Could not read the file: {t}", .{e});
+        const text = std.Io.Dir.cwd().readFileAlloc(ctx.io, files[0], ctx.gpa, .limited(16 << 20)) catch |e| return v.status.set("Could not read the file: {t}", .{e});
         defer ctx.gpa.free(text);
         const added = cookies.parse(ctx.gpa, text) catch return;
         defer cookies.freeList(ctx.gpa, added);
@@ -247,7 +241,7 @@ pub const View = struct {
             if (validDomain(d)) list.append(ctx.gpa, d) catch return else bad += 1;
         }
         _ = v.saveList(ctx, list.items);
-        if (bad == 0) v.setStatus("Imported {d} domains.", .{added.len}) else v.setStatus("Imported {d} domains, {d} invalid lines skipped.", .{ added.len - bad, bad });
+        if (bad == 0) v.status.set("Imported {d} domains.", .{added.len}) else v.status.set("Imported {d} domains, {d} invalid lines skipped.", .{ added.len - bad, bad });
     }
 
     fn exportList(v: *View, ctx: *Ctx) void {
@@ -259,7 +253,7 @@ pub const View = struct {
         defer ctx.gpa.free(path);
         const k = kept(ctx);
         defer ctx.gpa.free(k);
-        ui.writeLines(ctx.io, path, k) catch |e| return v.setStatus("Could not write the file: {t}", .{e});
-        v.setStatus("Exported {d} domains.", .{k.len});
+        ui.writeLines(ctx.io, path, k) catch |e| return v.status.set("Could not write the file: {t}", .{e});
+        v.status.set("Exported {d} domains.", .{k.len});
     }
 };
