@@ -138,7 +138,7 @@ pub const View = struct {
         const busy = v.job.isRunning();
         const avail = im.ImGui_GetContentRegionAvail();
         if (im.ImGui_BeginChild("##startupMain", .{ .x = avail.x - ui.colWidth(), .y = avail.y }, 0, im.ImGuiWindowFlags_NoBackground)) {
-            if (im.ImGui_BeginTabBar("##startupTabs", 0)) {
+            if (im.ImGui_BeginTabBar("##startupTabs", im.ImGuiTabBarFlags_DrawSelectedOverline)) { // the kit tab look: mint overline
                 for (tab_titles, tab_ids, 0..) |t, id, i| {
                     var lb: [96]u8 = undefined;
                     if (!im.ImGui_BeginTabItem(ui.z(&lb, "{s}##{s}", .{ t, id }).ptr, null, 0)) continue;

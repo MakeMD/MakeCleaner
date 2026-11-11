@@ -8,7 +8,7 @@ const elevated = @import("../core/elevated.zig");
 
 const im = kit.im;
 const w = kit.w;
-pub const pal = kit.app.palettes.cleaner;
+pub const pal = kit.app.palettes.carbon;
 
 pub fn col(rgb: u32) im.ImVec4 {
     return kit.app.color(rgb, 1);
@@ -157,26 +157,25 @@ pub fn colButton(text: [*:0]const u8, enabled: bool) bool {
 pub fn button(text: [*:0]const u8, enabled: bool) bool {
     im.ImGui_BeginDisabled(!enabled);
     defer im.ImGui_EndDisabled();
-    return im.ImGui_ButtonEx(text, .{ .x = @max(90 * scale(), im.ImGui_CalcTextSizeEx(text, null, true, -1).x + im.ImGui_GetStyle().*.FramePadding.x * 2), .y = 0 });
+    return im.ImGui_ButtonEx(text, .{ .x = buttonW(text), .y = 0 });
 }
 
-/// Accent colours of the "Primary" button style; pair with popPrimary.
-pub fn pushPrimary() void {
-    im.ImGui_PushStyleColorImVec4(im.ImGuiCol_Button, col(pal.accent));
-    im.ImGui_PushStyleColorImVec4(im.ImGuiCol_ButtonHovered, col(pal.accent_dark));
-    im.ImGui_PushStyleColorImVec4(im.ImGuiCol_ButtonActive, col(pal.accent_dark));
-    im.ImGui_PushStyleColorImVec4(im.ImGuiCol_Text, col(0xFFFFFF));
+fn buttonW(text: [*:0]const u8) f32 {
+    return @max(90 * scale(), im.ImGui_CalcTextSizeEx(text, null, true, -1).x + im.ImGui_GetStyle().*.FramePadding.x * 2);
 }
 
-pub fn popPrimary() void {
-    im.ImGui_PopStyleColorEx(4);
-}
-
-/// Primary (accent) button, like the "Primary" style.
+/// Primary (mint fill, anthracite text) button, like the "Primary" style.
 pub fn primary(text: [*:0]const u8, enabled: bool) bool {
-    pushPrimary();
-    defer popPrimary();
-    return button(text, enabled);
+    im.ImGui_BeginDisabled(!enabled);
+    defer im.ImGui_EndDisabled();
+    return kit.ui.primaryButtonEx(text, .{ .x = buttonW(text), .y = 0 });
+}
+
+/// `primary` in palette danger: the button that starts a destructive action.
+pub fn danger(text: [*:0]const u8, enabled: bool) bool {
+    im.ImGui_BeginDisabled(!enabled);
+    defer im.ImGui_EndDisabled();
+    return kit.ui.dangerButtonEx(text, .{ .x = buttonW(text), .y = 0 });
 }
 
 /// style.ItemSpacing.y (vertical gap ImGui adds after every item).
@@ -212,9 +211,12 @@ pub fn Text(comptime n: usize) type {
 
 // ---------------------------------------------------------------- sub-navigation (SubNavPage)
 
-/// Left sub-menu (180 px, Surface background, AccentSoft selection). Items are "Title##<id><i>".
-/// Draws inside its own child; returns nothing, `sel` changes on click.
-pub fn subNav(id: []const u8, titles: []const [:0]const u8, sel: *usize, height: f32) void {
+/// Sub-menu entry: title + kit icon.
+pub const NavItem = struct { [:0]const u8, kit.icons.Name };
+
+/// Left sub-menu (180 px, Surface background, AccentSoft selection). Items are "Title##<id>Nav<i>", a 20 px
+/// icon left of each title. Draws inside its own child; returns nothing, `sel` changes on click.
+pub fn subNav(id: []const u8, items: []const NavItem, sel: *usize, height: f32) void {
     const s = scale();
     var buf: [64]u8 = undefined;
     im.ImGui_PushStyleColorImVec4(im.ImGuiCol_ChildBg, col(pal.surface));
@@ -230,7 +232,8 @@ pub fn subNav(id: []const u8, titles: []const [:0]const u8, sel: *usize, height:
         im.ImGui_PushStyleColorImVec4(im.ImGuiCol_HeaderActive, col(pal.accent_soft));
         im.ImGui_PushStyleVarImVec2(im.ImGuiStyleVar_ItemSpacing, .{ .x = 0, .y = 0 });
         im.ImGui_PushStyleVarImVec2(im.ImGuiStyleVar_SelectableTextAlign, .{ .x = 0, .y = 0.5 });
-        for (titles, 0..) |t, i| {
+        for (items, 0..) |it, i| {
+            const t = it[0];
             var lb: [96]u8 = undefined;
             im.ImGui_SetCursorPosX(0);
             const pos = im.ImGui_GetCursorScreenPos();
@@ -242,7 +245,14 @@ pub fn subNav(id: []const u8, titles: []const [:0]const u8, sel: *usize, height:
             im.ImGui_PushStyleColorImVec4(im.ImGuiCol_HeaderHovered, col(if (sel.* == i) pal.accent_soft else pal.bg));
             if (im.ImGui_SelectableEx(z(&lb, "{s}##{s}Nav{d}", .{ t, id, i }).ptr, sel.* == i, 0, .{ .x = 180 * s, .y = h })) sel.* = i;
             im.ImGui_PopStyleColorEx(2);
-            im.ImDrawList_AddText(im.ImGui_GetWindowDrawList(), .{ .x = pos.x + 14 * s, .y = pos.y + 9 * s }, kit.app.colorU32(pal.text), t.ptr);
+            const dl = im.ImGui_GetWindowDrawList();
+            if (kit.icons.get(it[1], 20)) |tex| {
+                const px = kit.icons.pixels(20);
+                const ix = @round(pos.x + 12 * s); // whole pixels: the texture maps 1:1
+                const iy = @round(pos.y + (h - px) / 2);
+                im.ImDrawList_AddImage(dl, tex, .{ .x = ix, .y = iy }, .{ .x = ix + px, .y = iy + px });
+            }
+            im.ImDrawList_AddText(dl, .{ .x = pos.x + 42 * s, .y = pos.y + 9 * s }, kit.app.colorU32(pal.text), t.ptr);
         }
         im.ImGui_PopStyleVarEx(2);
         im.ImGui_PopStyleColorEx(3);
@@ -301,7 +311,7 @@ pub const Dialog = struct {
 
     /// ToolsUi.Confirm: the title doubles as the action button.
     pub fn confirm(d: *Dialog, tag: u32, ttl: []const u8, comptime fmt: []const u8, args: anytype) void {
-        d.show(tag, ttl, .warning, &.{ ttl, "Cancel" }, fmt, args);
+        d.show(tag, ttl, .danger, &.{ ttl, "Cancel" }, fmt, args);
     }
 
     pub fn info(d: *Dialog, tag: u32, ttl: []const u8, comptime fmt: []const u8, args: anytype) void {

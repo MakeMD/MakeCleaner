@@ -122,7 +122,7 @@ pub const View = struct {
             v.targets[v.n_targets] = d.root;
             v.n_targets += 1;
         };
-        if (v.n_targets == 0) return v.progress.set("Select at least one drive.", .{});
+        if (v.n_targets == 0) return; // the Wipe button is disabled then
         v.n_passes = methods[@intCast(v.passes)].passes;
         v.entire = v.entireMode();
         var nb: [128]u8 = undefined;
@@ -145,7 +145,7 @@ pub const View = struct {
             v.prompt.set("");
             v.prompt_open = true;
         } else {
-            v.dlg.show(tag_free, "Drive Wiper", .warning, &.{ "Wipe free space", "Cancel" }, "Wipe free space on {s} with {d} pass(es)? This can take a long time; the drive is temporarily filled.", .{ v.targetNames(&nb), v.n_passes });
+            v.dlg.show(tag_free, "Drive Wiper", .danger, &.{ "Wipe free space", "Cancel" }, "Wipe free space on {s} with {d} pass(es)? This can take a long time; the drive is temporarily filled.", .{ v.targetNames(&nb), v.n_passes });
         }
     }
 
@@ -251,7 +251,10 @@ pub const View = struct {
         kit.ui.text("wipeProgress", v.progress.slice(), ui.pal.text, @max(50, row_w - btns - 8 * s));
         im.ImGui_SameLine();
         im.ImGui_SetCursorPosX(x0 + @max(50 + 8 * s, row_w - btns)); // the buttons stay right-aligned
-        if (ui.primary("Wipe##wipe", !busy)) v.run();
+        const any = for (v.drives.items) |d| {
+            if (d.on) break true;
+        } else false;
+        if (ui.danger("Wipe##wipe", !busy and any)) v.run();
         im.ImGui_SameLineEx(0, 8 * s);
         if (ui.button("Cancel##wipeCancel", busy)) v.job.cancel();
         if (busy) ctx.app.requestFrames(2);
@@ -296,7 +299,10 @@ pub const View = struct {
         const s = ui.scale();
         im.ImGui_SetNextWindowPosEx(im.ImGuiViewport_GetCenter(im.ImGui_GetMainViewport()), im.ImGuiCond_Appearing, .{ .x = 0.5, .y = 0.5 });
         im.ImGui_SetNextWindowSize(.{ .x = 440 * s, .y = 0 }, 0);
-        if (!im.ImGui_BeginPopupModal(id, null, im.ImGuiWindowFlags_NoResize | im.ImGuiWindowFlags_NoSavedSettings)) return null;
+        im.ImGui_PushStyleColorImVec4(im.ImGuiCol_PopupBg, ui.col(ui.pal.bg)); // danger text needs bg (4.9:1), not surface (3.9:1)
+        const open = im.ImGui_BeginPopupModal(id, null, im.ImGuiWindowFlags_NoResize | im.ImGuiWindowFlags_NoSavedSettings);
+        im.ImGui_PopStyleColor();
+        if (!open) return null;
         defer im.ImGui_EndPopup();
         var nb: [128]u8 = undefined;
         var tb: [300]u8 = undefined;
@@ -309,7 +315,7 @@ pub const View = struct {
         const entered = im.ImGui_InputText("##confirmWord", &v.prompt.b, v.prompt.b.len + 1, im.ImGuiInputTextFlags_EnterReturnsTrue);
         im.ImGui_Dummy(.{ .x = 0, .y = 6 * s });
         im.ImGui_SetCursorPosX(im.ImGui_GetCursorPosX() + im.ImGui_GetContentRegionAvail().x - 96 * s * 2 - 8 * s);
-        const ok = ui.primary("Erase##erasePromptOk", true) or entered;
+        const ok = ui.danger("Erase##erasePromptOk", true) or entered;
         im.ImGui_SameLineEx(0, 8 * s);
         const no = ui.button("Cancel##erasePromptCancel", true) or im.ImGui_IsKeyPressed(im.ImGuiKey_Escape);
         const answer = promptAnswer(v.prompt.slice(), ok, no);

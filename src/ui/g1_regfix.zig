@@ -9,7 +9,7 @@ const ui = @import("tools_ui.zig");
 const regcleaner = @import("../core/regcleaner.zig");
 
 const im = kit.im;
-const pal = kit.app.palettes.cleaner;
+const pal = kit.app.palettes.carbon;
 const Allocator = std.mem.Allocator;
 const Job = kit.jobs.Job;
 const RegIssue = regcleaner.RegIssue;
@@ -137,7 +137,7 @@ pub const Fix = struct {
             for (f.fixed) |d| left += @intFromBool(!d);
             var mbuf: [160]u8 = undefined;
             const msg: []const u8 = std.mem.print(&mbuf, "Fix all {d} remaining issues? The backup you just saved can undo this.", .{left}) catch "Fix all remaining issues?";
-            f.confirm.show(0, "Fix All Selected", .warning, &.{ "Fix all", "Cancel" }, "{s}", .{msg});
+            f.confirm.show(0, "Fix All Selected", .danger, &.{ "Fix all", "Cancel" }, "{s}", .{msg});
         }
         im.ImGui_SameLineEx(0, 8 * s);
         if (g.button("Close##regclose", !busy, false)) return f.close(true);

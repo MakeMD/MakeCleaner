@@ -1,6 +1,6 @@
 # GUI smoke for Tools (Drive Wiper, System Restore) and Options > Settings: sandbox copy (portable), TEMP/AppData
 # pointed at fixtures. Opens each page over the MakeKit automation pipe, ticks the first drive to show warnings (then
-# unticks it), takes screenshots. Clicks Wipe only while no drive is ticked (the 'Select at least one drive.' check);
+# unticks it), takes screenshots. Never clicks Wipe (disabled until a drive is ticked, checked);
 # NEVER Remove / Erase / Restart as admin. Options > Settings: secure delete 3 passes + TempOlderThan24h are saved. Pure ASCII (PS 5.1).
 param([int]$Screen = 1, [string]$BinDir = '', [string]$ShotDir = $env:TEMP)
 $ErrorActionPreference = 'Stop'
@@ -28,10 +28,9 @@ try {
     Write-Host ("drives listed: " + $drives.Count + " -> " + (($drives | ForEach-Object { $_.label -replace '##drive\d+$', '' }) -join ' | '))
     if ($drives.Count -eq 0) { $fail += 'no drives' }
     elseif (@($drives | Where-Object { $_.checked }).Count -eq 0) {
-        Invoke-AutoClick $app 'Wipe##wipe'; $null = Invoke-AutoFrames $app 2
-        $none = Get-AutoText $app '##wipeProgress'
-        Write-Host "wipe with no drive: $none"
-        if ($none -ne 'Select at least one drive.') { $fail += "no-drive message ($none)" }
+        $off = (Wait-AutoItem $app 'Wipe##wipe').disabled
+        Write-Host "wipe disabled with no drive: $off"
+        if (-not $off) { $fail += 'wipe enabled with no drive ticked' }
     }
     if ($drives.Count -gt 0) {
         Invoke-AutoClick $app $drives[0].label; $null = Invoke-AutoFrames $app 3

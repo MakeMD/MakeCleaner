@@ -12,7 +12,7 @@ const regcleaner = @import("../core/regcleaner.zig");
 const custom = @import("../core/custom.zig");
 
 const im = kit.im;
-const pal = kit.app.palettes.cleaner;
+const pal = kit.app.palettes.carbon;
 const Allocator = std.mem.Allocator;
 const Job = kit.jobs.Job;
 const Tri = kit.ui.Tri;

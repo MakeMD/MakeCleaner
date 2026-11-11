@@ -6,11 +6,11 @@ const settings_mod = @import("../core/settings.zig");
 const ui = @import("tools_ui.zig");
 
 const im = kit.im;
-const pal = kit.app.palettes.cleaner;
+const pal = kit.app.palettes.carbon;
 const scale = ui.scale;
 const col = ui.col;
 
-/// Theme.xaml button: min 110 x 32, Primary = accent fill + white bold text; disabled = faded.
+/// Theme.xaml button: min 110 x 32, Primary = mint fill + anthracite text (kit.ui.primaryButtonEx); disabled = faded.
 pub fn button(lbl: [*:0]const u8, enabled: bool, primary: bool) bool {
     return buttonMin(lbl, enabled, primary, 110);
 }
@@ -19,9 +19,8 @@ pub fn buttonMin(lbl: [*:0]const u8, enabled: bool, primary: bool, min_w: f32) b
     const s = scale();
     const tw = im.ImGui_CalcTextSizeEx(lbl, null, true, -1).x;
     if (!enabled) im.ImGui_BeginDisabled(true);
-    if (primary) ui.pushPrimary();
-    const pressed = im.ImGui_ButtonEx(lbl, .{ .x = @max(min_w * s, tw + 32 * s), .y = 32 * s });
-    if (primary) ui.popPrimary();
+    const size: im.ImVec2 = .{ .x = @max(min_w * s, tw + 32 * s), .y = 32 * s };
+    const pressed = if (primary) kit.ui.primaryButtonEx(lbl, size) else im.ImGui_ButtonEx(lbl, size);
     if (!enabled) im.ImGui_EndDisabled();
     return pressed and enabled;
 }

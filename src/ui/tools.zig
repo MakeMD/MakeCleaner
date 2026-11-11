@@ -15,7 +15,10 @@ const views = .{
     @import("tools_wiper.zig").View,
     @import("tools_restore.zig").View,
 };
-const titles = [_][:0]const u8{ "Uninstall", "Startup", "Duplicate Finder", "Disk Analyzer", "Drive Wiper", "System Restore" };
+const titles = [_]ui.NavItem{
+    .{ "Uninstall", .uninstall },     .{ "Startup", .startup },    .{ "Duplicate Finder", .duplicates },
+    .{ "Disk Analyzer", .disk_analyzer }, .{ "Drive Wiper", .wipe }, .{ "System Restore", .restore },
+};
 
 pub const Page = struct {
     sel: usize = 0,

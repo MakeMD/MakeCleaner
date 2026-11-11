@@ -15,7 +15,7 @@ const bytes = @import("../core/bytes.zig");
 const settings_mod = @import("../core/settings.zig");
 
 const im = kit.im;
-const pal = kit.app.palettes.cleaner;
+const pal = kit.app.palettes.carbon;
 const Allocator = std.mem.Allocator;
 const Job = kit.jobs.Job;
 const Tri = kit.ui.Tri;
@@ -115,6 +115,7 @@ pub const Page = struct {
     bar_done: u64 = 0,
     bar_total: u64 = 0,
     view_files: bool = false,
+    has_found: bool = true, // some line has a "Found" text (Files view of plain files has none)
     lines: []Line = &.{},
     selected: ?usize = null,
     clean_enabled: bool = false,
@@ -226,14 +227,13 @@ pub const Page = struct {
         for (tabs, 0..) |t, i| {
             if (i > 0) im.ImGui_SameLineEx(0, 2 * s);
             const sel = p.tab == i;
-            im.ImGui_PushStyleColorImVec4(im.ImGuiCol_Button, if (sel) ui.col(pal.accent_soft) else kit.app.color(0, 0));
-            im.ImGui_PushStyleColorImVec4(im.ImGuiCol_Text, ui.col(if (sel) pal.accent_dark else pal.text));
+            // the kit's ImGui tab look (theme TabSelected + 2 px mint overline), so every tab strip matches
+            im.ImGui_PushStyleColorImVec4(im.ImGuiCol_Button, if (sel) ui.col(pal.surface) else kit.app.color(0, 0));
             if (im.ImGui_Button(t[0])) p.tab = @intCast(i);
-            im.ImGui_PopStyleColorEx(2);
+            im.ImGui_PopStyleColor();
             if (sel) {
                 const mn = im.ImGui_GetItemRectMin();
-                const mx = im.ImGui_GetItemRectMax();
-                im.ImDrawList_AddRectFilled(dl, .{ .x = mn.x, .y = mx.y - 2 * s }, mx, kit.app.colorU32(pal.accent));
+                im.ImDrawList_AddRectFilled(dl, mn, .{ .x = im.ImGui_GetItemRectMax().x, .y = mn.y + 2 * s }, kit.app.colorU32(pal.accent));
             }
         }
         const t = tabs[p.tab];
@@ -256,7 +256,7 @@ pub const Page = struct {
                     if (want and n.warning != null and !n.on) {
                         // the box stays off until the user confirms (CheckNode.Confirm)
                         p.pending_warn = n;
-                        p.dialog.show(tag_warn, n.name, .warning, &.{ "Turn on", "Cancel" }, "{s}", .{n.warning.?});
+                        p.dialog.show(tag_warn, n.name, .danger, &.{ "Turn on", "Cancel" }, "{s}", .{n.warning.?});
                     } else n.on = want;
                 }
                 if (n.warning) |w| im.ImGui_SetItemTooltipUnformatted(w.ptr);
@@ -281,7 +281,6 @@ pub const Page = struct {
         // Summary / Files
         im.ImGui_Dummy(.{ .x = 0, .y = 6 * s });
         // WPF-sized radio (circle = font + 2 px, like kit.ui's checkbox) with a visible grey ring
-        im.ImGui_PushStyleColorImVec4(im.ImGuiCol_CheckMark, ui.col(pal.accent)); // the theme's white mark is for filled boxes
         im.ImGui_PushStyleColorImVec4(im.ImGuiCol_Border, ui.col(pal.muted));
         im.ImGui_PushStyleVarImVec2(im.ImGuiStyleVar_FramePadding, .{ .x = im.ImGui_GetStyle().*.FramePadding.x, .y = 1 });
         if (im.ImGui_RadioButton("Summary##viewSummary", !p.view_files) and p.view_files) {
@@ -294,7 +293,7 @@ pub const Page = struct {
             p.showResults();
         }
         im.ImGui_PopStyleVar();
-        im.ImGui_PopStyleColorEx(2);
+        im.ImGui_PopStyleColor();
         im.ImGui_Dummy(.{ .x = 0, .y = 2 * s });
 
         // results
@@ -325,11 +324,12 @@ pub const Page = struct {
         im.ImGui_PushStyleColorImVec4(im.ImGuiCol_TableRowBg, ui.col(pal.surface));
         im.ImGui_PushStyleColorImVec4(im.ImGuiCol_TableRowBgAlt, ui.col(pal.surface));
         defer im.ImGui_PopStyleColorEx(2);
-        if (!im.ImGui_BeginTableEx("##results", 3, flags, .{ .x = w, .y = h }, 0)) return;
+        const found = p.has_found; // only file lines: no "Found" column
+        if (!im.ImGui_BeginTableEx("##results", if (found) 3 else 2, flags, .{ .x = w, .y = h }, 0)) return;
         defer im.ImGui_EndTable();
         im.ImGui_TableSetupScrollFreeze(0, 1);
         im.ImGui_TableSetupColumnEx("Item", im.ImGuiTableColumnFlags_WidthStretch, 0, 0);
-        im.ImGui_TableSetupColumnEx("Found", im.ImGuiTableColumnFlags_WidthFixed, 110 * s, 0);
+        if (found) im.ImGui_TableSetupColumnEx("Found", im.ImGuiTableColumnFlags_WidthFixed, 110 * s, 0);
         im.ImGui_TableSetupColumnEx("Size", im.ImGuiTableColumnFlags_WidthFixed, 100 * s, 0);
         im.ImGui_TableHeadersRow();
 
@@ -348,8 +348,10 @@ pub const Page = struct {
                     p.selected = i;
                     _ = im.ImGui_OpenPopup("##filectx", 0);
                 }
-                _ = im.ImGui_TableNextColumn();
-                im.ImGui_TextUnformatted(l.found.ptr);
+                if (found) {
+                    _ = im.ImGui_TableNextColumn();
+                    im.ImGui_TextUnformatted(l.found.ptr);
+                }
                 _ = im.ImGui_TableNextColumn();
                 im.ImGui_TextUnformatted(l.size.ptr);
             }
@@ -589,6 +591,9 @@ pub const Page = struct {
         _ = p.lines_arena.reset(.retain_capacity);
         p.selected = null;
         p.lines = p.buildLines(p.lines_arena.allocator()) catch &.{};
+        p.has_found = for (p.lines) |l| {
+            if (l.found.len > 0) break true;
+        } else p.lines.len == 0;
     }
 
     fn buildLines(p: *Page, a: Allocator) ![]Line {

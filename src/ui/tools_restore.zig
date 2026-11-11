@@ -124,7 +124,7 @@ pub const View = struct {
         im.ImGui_BeginGroup();
         const p = v.picked();
         if (ui.colButton("Remove##rpRemove", p != null and rp.canRemove(p.?, v.points) and !v.job.isRunning()))
-            v.dlg.show(tag_confirm, "System Restore", .warning, &.{ "Remove", "Cancel" }, "Remove restore point \"{s}\"?", .{p.?.description});
+            v.dlg.show(tag_confirm, "System Restore", .danger, &.{ "Remove", "Cancel" }, "Remove restore point \"{s}\"?", .{p.?.description});
         if (v.show_admin) {
             if (ui.colButton("Restart as admin##rpAdmin", true)) ui.restartAsAdmin(ctx);
             im.ImGui_SetItemTooltipUnformatted("Restart MakeCleaner as administrator");

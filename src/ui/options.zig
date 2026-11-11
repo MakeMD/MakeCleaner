@@ -14,7 +14,10 @@ const common = @import("../core/common.zig");
 const im = kit.im;
 const w = kit.w;
 
-const titles = [_][:0]const u8{ "Settings", "Include", "Exclude", "Cookies", "Schedule", "About" };
+const titles = [_]ui.NavItem{
+    .{ "Settings", .settings }, .{ "Include", .folder_add }, .{ "Exclude", .folder_remove },
+    .{ "Cookies", .cookies },   .{ "Schedule", .schedule }, .{ "About", .info },
+};
 
 pub const Page = struct {
     sel: usize = 0,

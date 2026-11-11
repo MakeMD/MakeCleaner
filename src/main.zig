@@ -15,7 +15,7 @@ const ui_options = @import("ui/options.zig");
 
 const im = kit.im;
 const App = kit.app.App;
-const pal = kit.app.palettes.cleaner;
+const pal = kit.app.palettes.carbon;
 
 pub fn main(init: std.process.Init) !u8 {
     const gpa = init.gpa;
@@ -51,12 +51,12 @@ fn has(args: []const []const u8, flag: []const u8) bool {
 
 const Page = enum { cleaner, registry, tools, options };
 
-/// Rail tiles: Segoe Fluent glyph + label (= automation label).
-const tiles = [_]struct { page: Page, icon: u21, label: [:0]const u8 }{
-    .{ .page = .cleaner, .icon = 0xE74D, .label = "Cleaner" },
-    .{ .page = .registry, .icon = 0xE8F1, .label = "Registry" },
-    .{ .page = .tools, .icon = 0xE90F, .label = "Tools" },
-    .{ .page = .options, .icon = 0xE713, .label = "Options" },
+/// Rail tiles: kit icon + label (= automation label).
+const tiles = [_]struct { page: Page, icon: kit.icons.Name, label: [:0]const u8 }{
+    .{ .page = .cleaner, .icon = .cleaner, .label = "Cleaner" },
+    .{ .page = .registry, .icon = .registry, .label = "Registry" },
+    .{ .page = .tools, .icon = .tools, .label = "Tools" },
+    .{ .page = .options, .icon = .options, .label = "Options" },
 };
 
 const State = struct {
@@ -100,8 +100,8 @@ fn frame(app: *App) void {
     const cx = pos.x + rail_w / 2;
     const logo: im.ImVec2 = .{ .x = cx - 17 * sc, .y = pos.y + 14 * sc };
     im.ImDrawList_AddRectFilledEx(dl, logo, .{ .x = logo.x + 34 * sc, .y = logo.y + 34 * sc }, kit.app.colorU32(pal.accent), 8 * sc, 0);
-    text(dl, app.fonts.bold, 14 * sc, cx, logo.y + 17 * sc, .middle, 0xFFFFFF, "MC");
-    text(dl, app.fonts.bold, 11 * sc, cx, logo.y + 38 * sc, .top, 0xFFFFFF, "MakeCleaner");
+    text(dl, app.fonts.bold, 14 * sc, cx, logo.y + 17 * sc, .middle, pal.bg, "MC");
+    text(dl, app.fonts.bold, 11 * sc, cx, logo.y + 38 * sc, .top, pal.text, "MakeCleaner");
 
     var y = pos.y + 84 * sc;
     for (tiles) |t| {
@@ -116,10 +116,13 @@ fn frame(app: *App) void {
         } else if (im.ImGui_IsItemHovered(0)) {
             im.ImDrawList_AddRectFilled(dl, .{ .x = pos.x, .y = y }, max, kit.app.colorU32(pal.rail_hover));
         }
-        const fg: u32 = if (selected) 0xFFFFFF else pal.rail_text;
-        const g = kit.ui.glyph(t.icon);
-        text(dl, app.fonts.regular, 22 * sc, cx, y + 12 * sc, .top, fg, &g);
-        text(dl, app.fonts.regular, 12 * sc, cx, y + 41 * sc, .top, fg, t.label);
+        if (kit.icons.get(t.icon, 24)) |tex| {
+            const px = kit.icons.pixels(24);
+            const ix = @round(cx - px / 2); // whole pixels: the texture maps 1:1
+            const iy = @round(y + 11 * sc);
+            im.ImDrawList_AddImage(dl, tex, .{ .x = ix, .y = iy }, .{ .x = ix + px, .y = iy + px });
+        }
+        text(dl, app.fonts.regular, 12 * sc, cx, y + 41 * sc, .top, if (selected) pal.text else pal.rail_text, t.label);
         y += tile_h;
     }
 
@@ -139,7 +142,7 @@ fn frame(app: *App) void {
     const top = pos.y + body_h;
     im.ImDrawList_AddRectFilled(dl, .{ .x = pos.x, .y = top }, .{ .x = pos.x + size.x, .y = pos.y + size.y }, kit.app.colorU32(pal.surface));
     im.ImDrawList_AddLine(dl, .{ .x = pos.x, .y = top }, .{ .x = pos.x + size.x, .y = top }, kit.app.colorU32(pal.line));
-    const footer = "MakeCleaner " ++ ctx_mod.version ++ "\u{00B7}  no telemetry, no ads, no network access";
+    const footer = "MakeCleaner " ++ ctx_mod.version ++ "  \u{00B7}  no telemetry, no ads, no network access";
     im.ImDrawList_AddTextImFontPtr(dl, app.fonts.regular, 12 * sc, .{ .x = pos.x + 12 * sc, .y = top + 6 * sc }, kit.app.colorU32(pal.muted), footer);
     // About link on the right -> themed info dialog
     const about_w = im.ImGui_CalcTextSize("About").x;

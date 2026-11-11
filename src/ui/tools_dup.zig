@@ -258,13 +258,11 @@ pub const View = struct {
 
     fn drawSetup(v: *View, ctx: *Ctx) void {
         const s = ui.scale();
-        const avail = im.ImGui_GetContentRegionAvail();
-        const btn_h = im.ImGui_GetFrameHeight() + ui.sp();
         im.ImGui_PushStyleColorImVec4(im.ImGuiCol_ChildBg, ui.col(ui.pal.surface));
         im.ImGui_PushStyleColorImVec4(im.ImGuiCol_Border, ui.col(ui.pal.line));
         im.ImGui_PushStyleVarImVec2(im.ImGuiStyleVar_WindowPadding, .{ .x = 16 * s, .y = 12 * s });
         im.ImGui_PushStyleVar(im.ImGuiStyleVar_ChildRounding, 4 * s);
-        if (im.ImGui_BeginChild("##dupForm", .{ .x = 0, .y = avail.y - btn_h }, im.ImGuiChildFlags_Borders, 0)) {
+        if (im.ImGui_BeginChild("##dupForm", .{ .x = 0, .y = 0 }, im.ImGuiChildFlags_Borders | im.ImGuiChildFlags_AutoResizeY, 0)) { // as tall as the form, Search right under it
             const col2 = 110 * s;
             const busy = v.job.isRunning();
             im.ImGui_BeginDisabled(busy);
@@ -362,7 +360,7 @@ pub const View = struct {
         if (ui.colButton("Delete Selected##dupDelete", idle)) {
             var n: usize = 0;
             for (v.rows.items, v.checked.items) |r, c| n += @intFromBool(c and r.file != null);
-            if (n > 0) v.dlg.show(tag_delete, "Delete files", .warning, &.{ "Delete", "Cancel" }, "Delete {d} file(s)? This cannot be undone.", .{n});
+            if (n > 0) v.dlg.show(tag_delete, "Delete files", .danger, &.{ "Delete", "Cancel" }, "Delete {d} file(s)? This cannot be undone.", .{n});
         }
         if (ui.colButton("Back##dupBack", idle)) v.results = false;
         im.ImGui_EndGroup();

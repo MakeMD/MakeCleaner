@@ -251,7 +251,7 @@ pub const View = struct {
         const del = im.ImGui_ButtonEx("Delete Selected##daDelete", .{ .x = 140 * s, .y = 0 });
         im.ImGui_EndDisabled();
         if (del) {
-            if (has and v.picked.count() > 0) v.dlg.show(tag_delete, "Delete files", .warning, &.{ "Delete", "Cancel" }, "Delete {d} file(s)? This cannot be undone.", .{v.picked.count()});
+            if (has and v.picked.count() > 0) v.dlg.show(tag_delete, "Delete files", .danger, &.{ "Delete", "Cancel" }, "Delete {d} file(s)? This cannot be undone.", .{v.picked.count()});
         }
         im.ImGui_SameLineEx(0, 8 * s);
         if (im.ImGui_ButtonEx("Save Report...##daSave", .{ .x = 120 * s, .y = 0 })) v.saveReport(ctx);
@@ -311,7 +311,7 @@ pub const View = struct {
                     y += 13 * s;
                     im.ImDrawList_AddTextImFontPtr(dl, im.ImGui_GetFont(), 11 * s, .{ .x = x, .y = y }, kit.app.colorU32(ui.pal.muted), detail.ptr);
                 }
-            }
+            } else ui.mutedWrapped("Pick a drive or folder and press Analyze to see what takes the space.", im.ImGui_GetContentRegionAvail().x);
         }
         im.ImGui_EndChild();
     }
