@@ -7,3 +7,5 @@ dist/
 .zig-cache/
 zig-out/
 zig-pkg/
+# private research notes - kept local, never published
+re/notes/
