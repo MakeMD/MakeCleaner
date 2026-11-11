@@ -216,12 +216,7 @@ pub fn loadApplications(arena: Allocator, io: Io, exe_dir: []const u8) ![]Rule {
             error.FileNotFound, error.IsDir => continue,
             else => |x| return x,
         };
-        // File.ReadAllText: UTF-8 (BOM ok) or UTF-16 LE with BOM (Notepad's "Unicode"). ponytail: no UTF-16 BE.
-        const text = if (std.mem.startsWith(u8, raw, "\xFF\xFE")) utf16: {
-            const units = try arena.alloc(u16, (raw.len - 2) / 2);
-            for (units, 0..) |*u, i| u.* = std.mem.readInt(u16, raw[2 + 2 * i ..][0..2], .little);
-            break :utf16 try std.unicode.wtf16LeToWtf8Alloc(arena, units);
-        } else if (std.mem.startsWith(u8, raw, "\xEF\xBB\xBF")) raw[3..] else raw;
+        const text = try common.readAllText(arena, raw); // UTF-8 or Notepad's UTF-16 LE
         for (try parseIni(arena, text)) |r| try by_name.put(arena, r.name, r);
     }
     const out = try detected(arena, io, by_name.values());

@@ -24,6 +24,17 @@ pub fn trim(s: []const u8) []const u8 {
     return std.mem.trim(u8, s, &std.ascii.whitespace);
 }
 
+/// File.ReadAllText's decoding of `raw`: UTF-8 (BOM stripped) or UTF-16 LE with a BOM (Notepad's "Unicode"),
+/// which is converted into `a`; otherwise a slice of `raw`. ponytail: no UTF-16 BE (no tool writes it for an ini).
+pub fn readAllText(a: Allocator, raw: []const u8) ![]const u8 {
+    if (std.mem.startsWith(u8, raw, "\xEF\xBB\xBF")) return raw[3..];
+    if (!std.mem.startsWith(u8, raw, "\xFF\xFE")) return raw;
+    const units = try a.alloc(u16, (raw.len - 2) / 2);
+    defer a.free(units);
+    for (units, 0..) |*u, i| u.* = std.mem.readInt(u16, raw[2 + 2 * i ..][0..2], .little);
+    return std.unicode.wtf16LeToWtf8Alloc(a, units);
+}
+
 /// Path.GetTempPath (with its trailing backslash), allocated with `a`.
 pub fn tempPath(a: std.mem.Allocator) ![]u8 {
     var buf: [kit.w.MAX_PATH + 2]u16 = undefined;

@@ -42,8 +42,10 @@ pub const Settings = struct {
             else => |x| return x,
         };
         defer gpa.free(raw);
-        // ponytail: UTF-8 with or without BOM (what Save writes); a UTF-16 ini (old Notepad "Unicode") is not decoded.
-        const text = if (std.mem.startsWith(u8, raw, "\xEF\xBB\xBF")) raw[3..] else raw;
+        // UTF-8 with or without BOM (what Save writes), or UTF-16 LE from a Notepad "Unicode" save (as File.ReadAllLines)
+        var decoded: std.heap.ArenaAllocator = .init(gpa);
+        defer decoded.deinit();
+        const text = try common.readAllText(decoded.allocator(), raw);
         var lines = std.mem.splitAny(u8, text, "\r\n"); // File.ReadAllLines: \r\n, \n or \r
         while (lines.next()) |line| {
             const eq = std.mem.findScalar(u8, line, '=') orelse continue;
@@ -247,4 +249,10 @@ test "ini format: case-insensitive keys, TryParse fallbacks, set over a borrowed
     defer gpa.free(text);
     // first spelling of a key is kept; setList dropped X4 too (every X<number>) and appended the new list
     try std.testing.expectEqualStrings("[Options]\r\nPasses=35\r\nflag=TRUE\r\nbad=yes\r\nN=99999999999\r\nWeird Key=a=b\r\nX1=one\r\nX2=two\r\n", text);
+
+    // Notepad's "Unicode" (UTF-16 LE + BOM) reads like the UTF-8 file; Save writes UTF-8 again.
+    try Io.Dir.cwd().writeFile(io, .{ .sub_path = ini, .data = "\xFF\xFE[\x00O\x00]\x00\r\x00\n\x00K\x00=\x00\x16\x04\x10\x04\r\x00\n\x00" });
+    var u = try Settings.load(gpa, io, t.path);
+    defer u.deinit();
+    try std.testing.expectEqualStrings("ЖА", u.get("k", ""));
 }
