@@ -1,9 +1,9 @@
 # MakeCleaner Zig port - package handoff
 
-Branch `zig`. The C# app in `legacy/` is the specification: `legacy/src/MakeCleaner.Core/*.cs` = logic,
-`legacy/src/MakeCleaner/*.xaml(.cs)` = GUI, `legacy/tests/MakeCleaner.Tests/*.cs` = tests to port.
-Zig 0.17.1 (`C:\Users\MakeMD\AppData\Local\Programs\zig\0.17.1\zig.exe`, not on PATH); read
-`..\MakeKit\docs\ZIG-0.17-NOTES.md` before writing Zig.
+`master` (2.0.0). The C# 1.x app is the behaviour spec, in git history only (`git show 6d1238c:legacy/<path>`):
+`legacy/src/MakeCleaner.Core/*.cs` = logic, `legacy/src/MakeCleaner/*.xaml(.cs)` = GUI,
+`legacy/tests/MakeCleaner.Tests/*.cs` = the ported tests. Zig 0.17.1 (on PATH, `%LOCALAPPDATA%\Programs\zig\0.17.1`);
+read `..\MakeKit\docs\ZIG-0.17-NOTES.md` before writing Zig.
 
 ## Packages
 
@@ -16,7 +16,7 @@ Zig 0.17.1 (`C:\Users\MakeMD\AppData\Local\Programs\zig\0.17.1\zig.exe`, not on 
 | MC-D | src/core/startup.zig, uninstall.zig, schedule.zig, restorepoints.zig, src/test_systools.zig (+ startup_*.zig etc.) | Startup.cs, Uninstall.cs, Schedule.cs, RestorePoints.cs | ToolsTests (Startup, Uninstall, Restore parts), ScheduleTests | test-systools | done (55 tests incl. /auto e2e) |
 | MC-E | src/core/duplicates.zig, diskanalyzer.zig, securedelete.zig, drivewiper.zig, src/test_filetools.zig (+ own prefixes) | Duplicates.cs (+ Scan), DiskAnalyzer.cs, SecureDelete.cs, DriveWiper.cs | DuplicatesTests, SecureDeleteTests, ToolsTests (DiskAnalyzer, DriveWiper parts) | test-filetools | done (33 tests) |
 
-Not split out yet: the GUI (legacy `src/MakeCleaner/*`), only a placeholder window exists in `src/main.zig`.
+GUI: `src/ui/*` (Cleaner, Registry, Tools, Options), driven by the smokes in `tools\` (see MC-T below).
 
 ## Build
 
@@ -95,9 +95,6 @@ Stub surface per package (see doc comments in each file for the C# member mirror
 
 ## Known gaps / decisions
 
-- MakeKit 86e19c3: `third_party/imgui/VERSION` shadows libc++'s `<version>` (case-insensitive NTFS, the dir is an
-  include path). WORKAROUND in build.zig: the kit's imgui lib gets that dir as `-idirafter` instead of `-I`.
-  Real fix belongs in MakeKit (rename to `third_party/VERSION-imgui.txt`); then delete the loop in build.zig.
 - test-systools and test depend on the install step: ScheduleTests.Auto_cleans_saved_items runs the installed
   exe with `/auto` in a sandbox (portable.dat, only Temporary Files ticked, TEMP/TMP/APPDATA/LOCALAPPDATA = fixtures).
 
@@ -130,26 +127,35 @@ Stub surface per package (see doc comments in each file for the C# member mirror
   that copy, TCP/UDP poll of MakeCleaner processes in the sandboxes, new entries in %AppData%/%LocalAppData%/HKCU\Software.
   Runtime LoadLibrary (dnsapi in special.zig, srclient in restorepoints.zig) is invisible to the import check.
 
-## Open items per package
+## Open items (reviewed 2026-11-11)
 
-- GUI: not ported (placeholder rail in main.zig). Needs Cleaner/Registry/Tools/Options pages incl. RegistryView /
-  RegFixDialog (core API: regcleaner.RegScanner.scan per category, writeBackup, apply, exists).
+Closed 2026-11-11:
+- Error words: `/auto`'s `FAILED:` log line, the free-space-wipe note and every GUI status/dialog that showed a Zig
+  error name (AccessDenied, FileBusy, ...) now show Windows' localized message (`kit.win.errText`, FormatMessageW);
+  so do failed background jobs (`kit.jobs` records it, cut on a UTF-8 boundary; error buffers are 512 bytes).
+- MakeCleaner.ini in UTF-16 LE with a BOM (Notepad "Unicode") is decoded like a user winapp2.ini already was
+  (`common.readAllText`, shared by settings.zig and rules.loadApplications).
+- MakeCleaner.exe has a VERSIONINFO resource (app.rc; numbers from build.zig.zon through build.zig `versionDefines`).
+- Stale entries removed: UTF-16 user winapp2.ini (was already decoded), the MakeKit imgui `VERSION` include
+  workaround (gone from build.zig), "GUI not ported".
+
+Left deliberately (each needs a real environment, fixtures or a design decision; none is a reported bug):
 - MC-A: no `\\?\` for paths > MAX_PATH when LongPathsEnabled = 0 (skipped, safe); FileKey pattern with a
-  directory part unsupported; fs.list builds the whole tree before filtering (memory on huge trees); /auto and
-  wipe failures log the Zig error name; UTF-16 user winapp2.ini not decoded; app list order ASCII, not culture;
-  networking / no-UI checks are source scans, not import-table checks; afterClean / real Recycle Bin untested.
+  directory part unsupported; fs.list builds the whole tree before filtering (memory on huge trees); app list order
+  is ASCII case-insensitive, not culture (display order only); networking / no-UI checks are source scans next to
+  the import-table check; afterClean / real Recycle Bin untested.
 - MC-B: closeGracefully positive path (a window closing) untested; jsonRemove/prefsRemove rewrite non-atomically
   (as C#); Firefox history DELETEs not in a transaction (as C#); ASCII-only Trim.
 - MC-C: exists() on an unknown hive = true (safe); scan errors skipped instead of thrown; cancel granularity =
   one category; elevated import reads a .reg from %TEMP% (as C#).
-- MC-D: Uninstall.launch, RestorePoints.remove, Task/Service setEnabled/delete not run by tests (as C#);
-  RestorePoints admin branch untested (non-elevated machine); file symlinks in Startup folders skipped.
+- MC-D: Uninstall.launch, RestorePoints.remove, Task/Service setEnabled/delete not run by tests (as C#: they need a
+  real install / admin); RestorePoints admin branch untested (non-elevated machine); file symlinks in Startup
+  folders skipped.
 - MC-E: WipeFreeSpace disk-full path, Format, mid-file hash cancel untested; isSsd only smoke-tested; hashing
   opens with full sharing (C# FileShare.Read would fail on a file open for writing).
-- settings.zig: case-insensitive key hash is ASCII-only (correct, slower for Cyrillic keys).
+- settings.zig: case-insensitive key hash is ASCII-only (correct, slower for Cyrillic keys); Bytes.fmt always prints
+  "." (the GUI is English); cookie hosts are lowered ASCII-only (hosts are ASCII/punycode).
+- `kit.win` registry helpers convert paths/names through a 512-byte buffer: key paths or value names longer than
+  ~255 UTF-16 chars fail with error.OutOfMemory (safe direction: treated as missing / not deleted).
 
-- `/auto` goes to `schedule.auto` (as legacy Program.cs -> Schedule.Auto), which drives `cleanpass`.
-- `kit.win` registry helpers convert paths/names through a 512-byte buffer: key paths or value names longer
-  than ~255 UTF-16 chars fail with error.OutOfMemory (safe direction: treated as missing / not deleted).
-- Settings reads UTF-8 (BOM ok) only; Bytes.fmt always prints "." as the decimal separator; cookie hosts are
-  lowered ASCII-only.
+Notes: `/auto` goes to `schedule.auto` (as legacy Program.cs -> Schedule.Auto), which drives `cleanpass`.
