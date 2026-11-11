@@ -21,7 +21,7 @@ pub const View = struct {
     next_arena: std.heap.ArenaAllocator = .init(std.heap.smp_allocator),
     next_apps: []InstalledApp = &.{},
     err: ?[]const u8 = null,
-    err_buf: [256]u8 = undefined,
+    err_buf: [512]u8 = undefined,
     search: ui.Buf(256) = .{},
     shown: std.ArrayList(u32) = .empty,
     sel: ?u32 = null,
@@ -91,7 +91,7 @@ pub const View = struct {
             else => a.changeCommand(ctx.gpa),
         } catch null) orelse return;
         defer ctx.gpa.free(cmd);
-        uninstall.launch(ctx.gpa, cmd) catch |e| v.dlg.info(tag_info, a.name, "{t}", .{e});
+        uninstall.launch(ctx.gpa, cmd) catch |e| v.dlg.info(tag_info, a.name, "{f}", .{kit.win.errText(e)});
     }
 
     fn save(v: *View, ctx: *Ctx) void {
@@ -139,7 +139,7 @@ pub const View = struct {
             ui.label("Search");
             im.ImGui_SameLine();
             var cb: [96]u8 = undefined;
-            var eb: [300]u8 = undefined;
+            var eb: [512]u8 = undefined;
             const count: []const u8 = if (v.err) |e| std.mem.print(&eb, "Error: {s}", .{e}) catch "Error" else if (v.job.isRunning() and v.apps.len == 0) "Loading..." else std.mem.print(&cb, "{d} programs", .{v.shown.items.len}) catch "";
             const count_w = @max(110 * s, im.ImGui_CalcTextSizeEx(count.ptr, count.ptr + count.len, false, -1).x) + 12 * s;
             if (v.search.input("##uninstallSearch", im.ImGui_GetContentRegionAvail().x - count_w)) v.fill(ctx.gpa);

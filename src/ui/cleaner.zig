@@ -191,7 +191,7 @@ pub const Page = struct {
         const p = self;
         if (!p.lists_started) {
             p.lists_started = true; // Page sits at its final address now: safe to hand it to a worker
-            p.lists_job.start(p, listsWorker) catch |e| p.say("Detecting applications failed: {t}", .{e});
+            p.lists_job.start(p, listsWorker) catch |e| p.say("Detecting applications failed: {f}", .{kit.win.errText(e)});
         }
         if (p.lists_job.takeFinished()) p.finishLists(ctx);
         if (p.work.takeFinished()) p.finishWork(ctx);
@@ -379,7 +379,7 @@ pub const Page = struct {
 
     fn finishLists(p: *Page, ctx: *Ctx) void {
         p.lists_job.join();
-        var ebuf: [128]u8 = undefined;
+        var ebuf: [512]u8 = undefined;
         const err = p.lists_job.errorText(&ebuf);
         const a = p.arena.allocator();
         p.brw_tree = browserTree(a, ctx.settings, p.browser_items) catch .{};
@@ -411,7 +411,7 @@ pub const Page = struct {
         p.work.start(p, analyzeWorker) catch |e| {
             p.phase = .idle;
             p.dropSnapshot(ctx);
-            p.say("Analysis failed: {t}", .{e});
+            p.say("Analysis failed: {f}", .{kit.win.errText(e)});
         };
     }
 
@@ -446,7 +446,7 @@ pub const Page = struct {
 
     fn finishWork(p: *Page, ctx: *Ctx) void {
         p.work.join();
-        var ebuf: [128]u8 = undefined;
+        var ebuf: [512]u8 = undefined;
         const err = p.work.errorText(&ebuf);
         const text = p.result_text;
         p.result_text = null;
@@ -532,7 +532,7 @@ pub const Page = struct {
             p.snap.?.deinit();
             p.snap = null;
             p.phase = .idle;
-            p.say("Cleaning failed: {t}", .{e});
+            p.say("Cleaning failed: {f}", .{kit.win.errText(e)});
         };
     }
 
@@ -632,7 +632,7 @@ pub const Page = struct {
         const path = p.lines[p.selected.?].path.?;
         var buf: [2100]u8 = undefined;
         const args = std.mem.print(&buf, "/select,\"{s}\"", .{path}) catch return;
-        _ = kit.win.shellExecute(p.gpa, .{ .file = "explorer.exe", .params = args }) catch |e| p.say("Could not open Explorer: {t}", .{e});
+        _ = kit.win.shellExecute(p.gpa, .{ .file = "explorer.exe", .params = args }) catch |e| p.say("Could not open Explorer: {f}", .{kit.win.errText(e)});
     }
 
     /// Writes the same Exclude list Options shows, and drops the file(s) from this run so Run Cleaner leaves them alone.
@@ -644,7 +644,7 @@ pub const Page = struct {
             std.mem.print(&ebuf, "PATH|{s}", .{dir})
         else
             std.mem.print(&ebuf, "FILE|{s}|{s}", .{ dir, std.Io.Dir.path.basename(file) })) catch return;
-        custom.addExclude(p.gpa, p.io, ctx.settings, entry) catch |e| return p.say("Could not save the Exclude list: {t}", .{e});
+        custom.addExclude(p.gpa, p.io, ctx.settings, entry) catch |e| return p.say("Could not save the Exclude list: {f}", .{kit.win.errText(e)});
         var n: usize = 0;
         for (p.pass.files) |f| {
             const drop = if (folder)

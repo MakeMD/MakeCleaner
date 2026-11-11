@@ -85,7 +85,7 @@ pub const View = struct {
                 2 => startup.readContextMenu(a, "HKCR", startup.blocked_key),
                 else => startup.readServices(a, startup.services_key),
             };
-            t.* = if (r) |items| .{ .items = items } else |e| .{ .err = try a.print("Error: {t}", .{e}) };
+            t.* = if (r) |items| .{ .items = items } else |e| .{ .err = try a.print("Error: {f}", .{kit.win.errText(e)}) };
             job.addDone(1); // first load: the UI shows next_tabs[0..done] while the rest is read (as C# did)
         }
     }
@@ -185,7 +185,7 @@ pub const View = struct {
         if (tab.err) |e| {
             im.ImGui_TableNextRow();
             _ = im.ImGui_TableSetColumnIndex(1);
-            var eb: [300]u8 = undefined;
+            var eb: [512]u8 = undefined;
             _ = im.ImGui_Selectable(ui.idLabel(&eb, e, "{s}Err", .{tab_ids[t]}).ptr);
             return;
         }

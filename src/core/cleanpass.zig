@@ -240,7 +240,7 @@ pub const CleanPass = struct {
             if (securedelete.wipeFreeSpace(io, tmp, @max(1, passes), wipe_progress, null, p.wipe_limit)) |_| {
                 wiped = ", free space wiped";
             } else |e| {
-                wiped = try arena.print(", free space wipe failed: {t}", .{e});
+                wiped = try arena.print(", free space wipe failed: {f}", .{kit.win.errText(e)});
             }
         }
         p.files = &.{};
@@ -295,8 +295,8 @@ pub fn auto(gpa: Allocator, io: Io, settings: *Settings, exe_dir: []const u8, sh
     const log = Io.Dir.path.join(gpa, &.{ dir, auto_log_name }) catch return 1;
     defer gpa.free(log);
     autoRun(gpa, io, settings, exe_dir, log, shutdown) catch |e| {
-        var buf: [128]u8 = undefined;
-        const msg: []const u8 = std.mem.print(&buf, "FAILED: {t}", .{e}) catch "FAILED";
+        var buf: [1600]u8 = undefined;
+        const msg: []const u8 = std.mem.print(&buf, "FAILED: {f}", .{kit.win.errText(e)}) catch "FAILED";
         appendLog(io, log, msg) catch {};
         return 1;
     };

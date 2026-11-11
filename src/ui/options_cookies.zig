@@ -106,7 +106,7 @@ pub const View = struct {
     pub fn draw(v: *View, ctx: *Ctx) void {
         const s = ui.scale();
         if (v.job.takeFinished()) {
-            var eb: [256]u8 = undefined;
+            var eb: [512]u8 = undefined;
             if (v.job.errorText(&eb)) |e| {
                 v.status.set("Could not read cookies: {s}", .{e});
             } else {
@@ -227,7 +227,7 @@ pub const View = struct {
         } }) catch null) orelse return;
         defer kit.win.freeList(ctx.gpa, files);
         if (files.len == 0) return;
-        const text = std.Io.Dir.cwd().readFileAlloc(ctx.io, files[0], ctx.gpa, .limited(16 << 20)) catch |e| return v.status.set("Could not read the file: {t}", .{e});
+        const text = std.Io.Dir.cwd().readFileAlloc(ctx.io, files[0], ctx.gpa, .limited(16 << 20)) catch |e| return v.status.set("Could not read the file: {f}", .{kit.win.errText(e)});
         defer ctx.gpa.free(text);
         const added = cookies.parse(ctx.gpa, text) catch return;
         defer cookies.freeList(ctx.gpa, added);
@@ -253,7 +253,7 @@ pub const View = struct {
         defer ctx.gpa.free(path);
         const k = kept(ctx);
         defer ctx.gpa.free(k);
-        ui.writeLines(ctx.io, path, k) catch |e| return v.status.set("Could not write the file: {t}", .{e});
+        ui.writeLines(ctx.io, path, k) catch |e| return v.status.set("Could not write the file: {f}", .{kit.win.errText(e)});
         v.status.set("Exported {d} domains.", .{k.len});
     }
 };

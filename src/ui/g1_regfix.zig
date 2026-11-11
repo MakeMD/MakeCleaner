@@ -182,7 +182,7 @@ pub const Fix = struct {
 
     fn finishApply(f: *Fix) void {
         f.job.join();
-        var ebuf: [128]u8 = undefined;
+        var ebuf: [512]u8 = undefined;
         if (f.job.errorText(&ebuf) != null) for (f.batch.items) |i| {
             if (!f.fixed[i]) f.failed[i] = true;
         };

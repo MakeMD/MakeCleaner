@@ -158,12 +158,12 @@ const Schedule = struct {
         const gpa = std.heap.smp_allocator;
         switch (p.op) {
             .create => schedule.create(gpa, p.run_kind, p.run_at, p.run_shutdown, schedule.task_name, null) catch |e| {
-                return job.setStatus("Could not create the task: {t}", .{e});
+                return job.setStatus("Could not create the task: {f}", .{kit.win.errText(e)});
             },
             .delete => schedule.delete(schedule.task_name) catch {},
             .describe => {},
         }
-        const d = schedule.describe(gpa, schedule.task_name) catch |e| return job.setStatus("Could not read the task: {t}", .{e});
+        const d = schedule.describe(gpa, schedule.task_name) catch |e| return job.setStatus("Could not read the task: {f}", .{kit.win.errText(e)});
         if (d) |text| {
             defer gpa.free(text);
             job.setStatus("{s}", .{text});

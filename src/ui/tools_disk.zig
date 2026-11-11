@@ -156,7 +156,7 @@ pub const View = struct {
             gpa.free(v.del_files);
             v.del_files = &.{};
         }
-        var eb: [256]u8 = undefined;
+        var eb: [512]u8 = undefined;
         if (v.job.errorText(&eb)) |e| return v.status.set("Failed: {s}", .{e});
         v.report.?.by_category = v.del_lists;
         v.sumCats();
@@ -185,7 +185,7 @@ pub const View = struct {
     pub fn draw(v: *View, ctx: *Ctx) void {
         const s = ui.scale();
         if (v.job.takeFinished()) {
-            var eb: [256]u8 = undefined;
+            var eb: [512]u8 = undefined;
             if (v.deleting) {
                 v.deleting = false;
                 v.deleted(ctx.gpa);

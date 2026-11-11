@@ -375,7 +375,7 @@ pub fn saveText(ctx: *Ctx, dlg: *Dialog, name: []const u8, lines: []const []cons
         .default_ext = "txt",
     }) catch null) orelse return;
     defer ctx.gpa.free(path);
-    writeLines(ctx.io, path, lines) catch |e| dlg.show(tag_write_error, "Save to text file", .err, &.{"OK"}, "Could not write {s}:\n{t}", .{ path, e });
+    writeLines(ctx.io, path, lines) catch |e| dlg.show(tag_write_error, "Save to text file", .err, &.{"OK"}, "Could not write {s}:\n{f}", .{ path, kit.win.errText(e) });
 }
 
 pub fn writeLines(io: std.Io, path: []const u8, lines: []const []const u8) !void {

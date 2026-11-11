@@ -180,7 +180,7 @@ pub const View = struct {
     pub fn draw(v: *View, ctx: *Ctx) void {
         const s = ui.scale();
         if (v.job.takeFinished()) {
-            var eb: [256]u8 = undefined;
+            var eb: [512]u8 = undefined;
             if (v.job.cancelled()) {
                 v.progress.set("Cancelled. Temporary wipe files removed.", .{});
             } else if (v.job.errorText(&eb)) |e| {

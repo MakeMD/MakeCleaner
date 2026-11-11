@@ -139,7 +139,7 @@ pub const Page = struct {
         var kb: [96]u8 = undefined;
         const key = std.mem.print(&kb, "Reg:{s}", .{cats[i].name}) catch return;
         ctx.settings.set(key, on) catch {};
-        ctx.settings.save(ctx.io) catch |e| p.say("Could not save the settings: {t}", .{e});
+        ctx.settings.save(ctx.io) catch |e| p.say("Could not save the settings: {f}", .{kit.win.errText(e)});
     }
 
     // ------------------------------------------------------------ right side
@@ -267,7 +267,7 @@ pub const Page = struct {
         p.say("Scanning...", .{});
         p.work.start(p, scanWorker) catch |e| {
             p.phase = .idle;
-            p.say("Scan failed: {t}", .{e});
+            p.say("Scan failed: {f}", .{kit.win.errText(e)});
         };
     }
 
@@ -288,7 +288,7 @@ pub const Page = struct {
 
     fn finishWork(p: *Page) void {
         p.work.join();
-        var ebuf: [128]u8 = undefined;
+        var ebuf: [512]u8 = undefined;
         const err = p.work.errorText(&ebuf);
         switch (p.phase) {
             .scanning => {
@@ -319,7 +319,7 @@ pub const Page = struct {
                     p.phase = .fixing;
                     p.fix.start(p.review_issues) catch |e| {
                         p.phase = .idle;
-                        p.say("Could not open the fix dialog: {t}", .{e});
+                        p.say("Could not open the fix dialog: {f}", .{kit.win.errText(e)});
                     };
                 }
             },
@@ -349,7 +349,7 @@ pub const Page = struct {
         p.work.start(p, backupWorker) catch |e| {
             p.phase = .idle;
             p.freeReview();
-            p.say("Backup failed: {t}", .{e});
+            p.say("Backup failed: {f}", .{kit.win.errText(e)});
         };
     }
 
@@ -383,7 +383,7 @@ pub const Page = struct {
         const target = p.rows.items[i].target; // scan_arena: survives the removal below
         var buf: [1100]u8 = undefined;
         const entry = std.mem.print(&buf, "REG|{s}", .{target}) catch return;
-        custom.addExclude(p.gpa, p.io, ctx.settings, entry) catch |e| return p.say("Could not save the Exclude list: {t}", .{e});
+        custom.addExclude(p.gpa, p.io, ctx.settings, entry) catch |e| return p.say("Could not save the Exclude list: {f}", .{kit.win.errText(e)});
         var n: usize = 0;
         for (p.rows.items) |r| {
             if (std.mem.eql(u8, r.target, target)) continue;
@@ -397,11 +397,11 @@ pub const Page = struct {
 
     /// Regedit opens at the key stored in its own LastKey setting.
     fn openInRegedit(p: *Page, key_path: []const u8) void {
-        const k = kit.win.createKey(.hkcu, "Software\\Microsoft\\Windows\\CurrentVersion\\Applets\\Regedit", .default) catch |e| return p.say("Could not open RegEdit: {t}", .{e});
+        const k = kit.win.createKey(.hkcu, "Software\\Microsoft\\Windows\\CurrentVersion\\Applets\\Regedit", .default) catch |e| return p.say("Could not open RegEdit: {f}", .{kit.win.errText(e)});
         defer k.close();
         var buf: [1100]u8 = undefined;
         const v = std.mem.print(&buf, "Computer\\{s}", .{key_path}) catch return;
-        k.writeString("LastKey", v) catch |e| return p.say("Could not open RegEdit: {t}", .{e});
-        _ = kit.win.shellExecute(p.gpa, .{ .file = "regedit.exe", .params = "/m" }) catch |e| p.say("Could not open RegEdit: {t}", .{e});
+        k.writeString("LastKey", v) catch |e| return p.say("Could not open RegEdit: {f}", .{kit.win.errText(e)});
+        _ = kit.win.shellExecute(p.gpa, .{ .file = "regedit.exe", .params = "/m" }) catch |e| p.say("Could not open RegEdit: {f}", .{kit.win.errText(e)});
     }
 };
