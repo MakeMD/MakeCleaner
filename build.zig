@@ -39,7 +39,7 @@ pub fn build(b: *std.Build) void {
         .root_module = module(b, "src/main.zig", imports, target, optimize),
     });
     // icon 1 + the kit manifest (app.rc finds app.manifest through the kit's res/ include path)
-    exe.root_module.addWin32ResourceFile(.{ .file = b.path("app.rc"), .include_paths = &.{kit_dep.namedLazyPath("res")} });
+    exe.root_module.addWin32ResourceFile(.{ .file = b.path("app.rc"), .include_paths = &.{kit_dep.namedLazyPath("res")}, .flags = versionDefines(b) });
     exe.subsystem = .windows;
     b.installArtifact(exe);
     // rules next to the exe (Winapp2.ini must ship with its CC BY-SA attribution in README.md)
@@ -66,4 +66,17 @@ fn module(b: *std.Build, root: []const u8, imports: []const std.Build.Module.Imp
     // Engine.BuiltInRules: Windows.ini is compiled in so the Windows tab can never go missing (`@embedFile("windows_ini")`).
     m.addAnonymousImport("windows_ini", .{ .root_source_file = b.path("rules/Windows.ini") });
     return m;
+}
+
+/// app.rc's VERSIONINFO numbers and string, from build.zig.zon's .version (tools\release.ps1 checks it matches
+/// src\ui\ctx.zig's `version`).
+fn versionDefines(b: *std.Build) []const []const u8 {
+    const ver = @import("build.zig.zon").version;
+    const v = std.SemanticVersion.parse(ver) catch @panic("build.zig.zon .version is not semver");
+    return b.allocator.dupe([]const u8, &.{
+        b.fmt("/DVER_MAJOR={d}", .{v.major}),
+        b.fmt("/DVER_MINOR={d}", .{v.minor}),
+        b.fmt("/DVER_PATCH={d}", .{v.patch}),
+        b.fmt("/DVER_STR=\"{s}\"", .{ver}),
+    }) catch @panic("OOM");
 }
