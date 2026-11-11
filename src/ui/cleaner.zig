@@ -249,6 +249,11 @@ pub const Page = struct {
             var st = gr.state();
             if (kit.ui.triCheckbox(gr.check_label.ptr, &st)) gr.set(st == .on);
             if (!open) continue;
+            // children one indent step right of the GROUP checkbox (TreeNode alone indents only from the arrow,
+            // which put child boxes left of the parent box)
+            const step = @max(1, im.ImGui_GetItemRectMin().x + im.ImGui_GetStyle().*.IndentSpacing - im.ImGui_GetCursorScreenPos().x); // IndentEx(<=0) would mean "default"
+            im.ImGui_IndentEx(step);
+            defer im.ImGui_UnindentEx(step);
             for (gr.items) |*n| {
                 var v: Tri = if (n.on) .on else .off;
                 if (kit.ui.triCheckbox(n.label.ptr, &v)) {
