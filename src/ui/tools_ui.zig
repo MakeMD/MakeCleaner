@@ -214,7 +214,7 @@ pub fn Text(comptime n: usize) type {
 /// Sub-menu entry: title + kit icon.
 pub const NavItem = struct { [:0]const u8, kit.icons.Name };
 
-/// Left sub-menu (180 px, Surface background, AccentSoft selection). Items are "Title##<id>Nav<i>", a 20 px
+/// Left sub-menu (180 px, Surface background, AccentSoft selection). Items are "Title##<id>Nav<i>", an 18 px
 /// icon left of each title. Draws inside its own child; returns nothing, `sel` changes on click.
 pub fn subNav(id: []const u8, items: []const NavItem, sel: *usize, height: f32) void {
     const s = scale();
@@ -246,13 +246,13 @@ pub fn subNav(id: []const u8, items: []const NavItem, sel: *usize, height: f32) 
             if (im.ImGui_SelectableEx(z(&lb, "{s}##{s}Nav{d}", .{ t, id, i }).ptr, sel.* == i, 0, .{ .x = 180 * s, .y = h })) sel.* = i;
             im.ImGui_PopStyleColorEx(2);
             const dl = im.ImGui_GetWindowDrawList();
-            if (kit.icons.get(it[1], 20)) |tex| {
-                const px = kit.icons.pixels(20);
+            if (kit.icons.get(it[1], 18)) |tex| {
+                const px = kit.icons.pixels(18);
                 const ix = @round(pos.x + 12 * s); // whole pixels: the texture maps 1:1
                 const iy = @round(pos.y + (h - px) / 2);
                 im.ImDrawList_AddImage(dl, tex, .{ .x = ix, .y = iy }, .{ .x = ix + px, .y = iy + px });
             }
-            im.ImDrawList_AddText(dl, .{ .x = pos.x + 42 * s, .y = pos.y + 9 * s }, kit.app.colorU32(pal.text), t.ptr);
+            im.ImDrawList_AddText(dl, .{ .x = pos.x + 40 * s, .y = @round(pos.y + (h - im.ImGui_GetFontSize()) / 2) }, kit.app.colorU32(pal.text), t.ptr);
         }
         im.ImGui_PopStyleVarEx(2);
         im.ImGui_PopStyleColorEx(3);

@@ -314,7 +314,7 @@ pub const View = struct {
         if (im.ImGui_IsWindowAppearing()) im.ImGui_SetKeyboardFocusHere();
         const entered = im.ImGui_InputText("##confirmWord", &v.prompt.b, v.prompt.b.len + 1, im.ImGuiInputTextFlags_EnterReturnsTrue);
         im.ImGui_Dummy(.{ .x = 0, .y = 6 * s });
-        im.ImGui_SetCursorPosX(im.ImGui_GetCursorPosX() + im.ImGui_GetContentRegionAvail().x - 96 * s * 2 - 8 * s);
+        im.ImGui_SetCursorPosX(im.ImGui_GetCursorPosX() + im.ImGui_GetContentRegionAvail().x - 90 * s * 2 - 8 * s);
         const ok = ui.danger("Erase##erasePromptOk", true) or entered;
         im.ImGui_SameLineEx(0, 8 * s);
         const no = ui.button("Cancel##erasePromptCancel", true) or im.ImGui_IsKeyPressed(im.ImGuiKey_Escape);

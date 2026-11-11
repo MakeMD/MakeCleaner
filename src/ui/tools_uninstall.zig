@@ -144,7 +144,6 @@ pub const View = struct {
             const count_w = @max(110 * s, im.ImGui_CalcTextSizeEx(count.ptr, count.ptr + count.len, false, -1).x) + 12 * s;
             if (v.search.input("##uninstallSearch", im.ImGui_GetContentRegionAvail().x - count_w)) v.fill(ctx.gpa);
             im.ImGui_SameLineEx(0, 12 * s);
-            im.ImGui_SetCursorPosY(im.ImGui_GetCursorPosY() + im.ImGui_GetStyle().*.FramePadding.y);
             ui.status("uninstallCount", count, ui.pal.muted);
             im.ImGui_Dummy(.{ .x = 0, .y = 2 * s });
             v.table(ctx);

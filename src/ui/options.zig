@@ -98,8 +98,8 @@ fn settingsPage(ctx: *Ctx) void {
         ctx.settings.set(securedelete.setting_key, securedelete.methods[@intCast(cur)].passes) catch {};
         save(ctx);
     }
+    im.ImGui_Dummy(.{ .x = 0, .y = 6 * s });
     for (age_options) |o| {
-        im.ImGui_Dummy(.{ .x = 0, .y = 6 * s });
         var on = ctx.settings.getBool(o.key, false);
         if (kit.ui.checkbox(o.text, &on)) {
             ctx.settings.set(o.key, on) catch {};

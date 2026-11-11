@@ -116,13 +116,13 @@ fn frame(app: *App) void {
         } else if (im.ImGui_IsItemHovered(0)) {
             im.ImDrawList_AddRectFilled(dl, .{ .x = pos.x, .y = y }, max, kit.app.colorU32(pal.rail_hover));
         }
-        if (kit.icons.get(t.icon, 24)) |tex| {
-            const px = kit.icons.pixels(24);
+        if (kit.icons.get(t.icon, 28)) |tex| {
+            const px = kit.icons.pixels(28);
             const ix = @round(cx - px / 2); // whole pixels: the texture maps 1:1
-            const iy = @round(y + 11 * sc);
+            const iy = @round(y + 10 * sc);
             im.ImDrawList_AddImage(dl, tex, .{ .x = ix, .y = iy }, .{ .x = ix + px, .y = iy + px });
         }
-        text(dl, app.fonts.regular, 12 * sc, cx, y + 41 * sc, .top, if (selected) pal.text else pal.rail_text, t.label);
+        text(dl, app.fonts.regular, 12 * sc, cx, y + 42 * sc, .top, if (selected) pal.text else pal.rail_text, t.label);
         y += tile_h;
     }
 

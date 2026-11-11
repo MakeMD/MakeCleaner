@@ -280,9 +280,8 @@ pub const Page = struct {
 
         // Summary / Files
         im.ImGui_Dummy(.{ .x = 0, .y = 6 * s });
-        // WPF-sized radio (circle = font + 2 px, like kit.ui's checkbox) with a visible grey ring
+        // kit radio (font-sized circle) with a visible grey ring
         im.ImGui_PushStyleColorImVec4(im.ImGuiCol_Border, ui.col(pal.muted));
-        im.ImGui_PushStyleVarImVec2(im.ImGuiStyleVar_FramePadding, .{ .x = im.ImGui_GetStyle().*.FramePadding.x, .y = 1 });
         if (im.ImGui_RadioButton("Summary##viewSummary", !p.view_files) and p.view_files) {
             p.view_files = false;
             p.showResults();
@@ -292,12 +291,11 @@ pub const Page = struct {
             p.view_files = true;
             p.showResults();
         }
-        im.ImGui_PopStyleVar();
         im.ImGui_PopStyleColor();
         im.ImGui_Dummy(.{ .x = 0, .y = 2 * s });
 
         // results
-        const btn_h = 32 * s + 12 * s;
+        const btn_h = g.buttonHeight() + 12 * s;
         const table_h = @max(60 * s, im.ImGui_GetContentRegionAvail().y - btn_h);
         const table_w = im.ImGui_GetContentRegionAvail().x;
         const top = im.ImGui_GetCursorScreenPos();

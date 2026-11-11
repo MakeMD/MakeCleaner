@@ -156,7 +156,7 @@ pub const Page = struct {
             p.say("Cancelling...", .{});
         }
 
-        const btn_h = 32 * s + 12 * s;
+        const btn_h = g.buttonHeight() + 12 * s;
         im.ImGui_Dummy(.{ .x = 0, .y = 6 * s });
         const table_h = @max(60 * s, im.ImGui_GetContentRegionAvail().y - btn_h);
         const top = im.ImGui_GetCursorScreenPos();
@@ -180,7 +180,7 @@ pub const Page = struct {
         if (!im.ImGui_BeginTableEx("##reglist", 4, flags, .{ .x = w, .y = h }, 0)) return;
         defer im.ImGui_EndTable();
         im.ImGui_TableSetupScrollFreeze(0, 1);
-        im.ImGui_TableSetupColumnEx("##check", im.ImGuiTableColumnFlags_WidthFixed, 34 * s, 0);
+        im.ImGui_TableSetupColumnEx("##check", im.ImGuiTableColumnFlags_WidthFixed, im.ImGui_GetFrameHeight(), 0);
         im.ImGui_TableSetupColumnEx("Problem", im.ImGuiTableColumnFlags_WidthFixed, 170 * s, 0);
         im.ImGui_TableSetupColumnEx("Data", im.ImGuiTableColumnFlags_WidthStretch, 0.45, 0);
         im.ImGui_TableSetupColumnEx("Registry key", im.ImGuiTableColumnFlags_WidthStretch, 0.55, 0);

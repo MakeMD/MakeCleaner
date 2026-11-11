@@ -1,4 +1,4 @@
-//! MC-G1 shared GUI helpers: the progress strip of Cleaner/Registry, buttons (Theme.xaml: flat, min 110x32,
+//! MC-G1 shared GUI helpers: the progress strip of Cleaner/Registry, buttons (Theme.xaml: flat, min 110 wide,
 //! Primary = accent) and the settings snapshot handed to workers. The Dialog, N0 and colours live in tools_ui.zig.
 const std = @import("std");
 const kit = @import("kit");
@@ -10,7 +10,7 @@ const pal = kit.app.palettes.carbon;
 const scale = ui.scale;
 const col = ui.col;
 
-/// Theme.xaml button: min 110 x 32, Primary = mint fill + anthracite text (kit.ui.primaryButtonEx); disabled = faded.
+/// Theme.xaml button: min 110 wide, `buttonHeight` tall, Primary = mint fill + anthracite text (kit.ui.primaryButtonEx); disabled = faded.
 pub fn button(lbl: [*:0]const u8, enabled: bool, primary: bool) bool {
     return buttonMin(lbl, enabled, primary, 110);
 }
@@ -19,10 +19,15 @@ pub fn buttonMin(lbl: [*:0]const u8, enabled: bool, primary: bool, min_w: f32) b
     const s = scale();
     const tw = im.ImGui_CalcTextSizeEx(lbl, null, true, -1).x;
     if (!enabled) im.ImGui_BeginDisabled(true);
-    const size: im.ImVec2 = .{ .x = @max(min_w * s, tw + 32 * s), .y = 32 * s };
+    const size: im.ImVec2 = .{ .x = @max(min_w * s, tw + 32 * s), .y = buttonHeight() };
     const pressed = if (primary) kit.ui.primaryButtonEx(lbl, size) else im.ImGui_ButtonEx(lbl, size);
     if (!enabled) im.ImGui_EndDisabled();
     return pressed and enabled;
+}
+
+/// Page action buttons (Analyze, Run Cleaner, Scan...): one step above the kit's frame height (24 + 4 at 96 DPI).
+pub fn buttonHeight() f32 {
+    return im.ImGui_GetFrameHeight() + 4 * scale();
 }
 
 pub fn buttonWidth(lbl: [*:0]const u8) f32 {
@@ -68,15 +73,16 @@ pub fn progressStrip(panel_id: [*:0]const u8, status: []const u8, status_id: []c
         const y1 = im.ImGui_GetCursorPosY();
         im.ImGui_SetCursorPos(.{ .x = im.ImGui_GetCursorPosX() + avail - bw, .y = y0 });
         if (!can_cancel) im.ImGui_BeginDisabled(true);
-        if (im.ImGui_ButtonEx(cancel_label, .{ .x = bw, .y = 26 * s }) and can_cancel) cancelled = true;
+        if (im.ImGui_ButtonEx(cancel_label, .{ .x = bw, .y = 0 }) and can_cancel) cancelled = true;
         if (!can_cancel) im.ImGui_EndDisabled();
-        im.ImGui_SetCursorPosY(@max(y1, y0 + 26 * s + im.ImGui_GetStyle().*.ItemSpacing.y) + 8 * s - im.ImGui_GetStyle().*.ItemSpacing.y);
+        im.ImGui_SetCursorPosY(@max(y1, y0 + im.ImGui_GetFrameHeight() + im.ImGui_GetStyle().*.ItemSpacing.y) + 8 * s - im.ImGui_GetStyle().*.ItemSpacing.y);
         const tw = 110 * s;
         const frac: f32 = if (total == 0) 0 else @as(f32, @floatFromInt(@min(done, total))) / @as(f32, @floatFromInt(total));
         im.ImGui_ProgressBar(frac, .{ .x = avail - tw - 10 * s, .y = 10 * s }, "");
         im.ImGui_SameLineEx(0, 10 * s);
-        im.ImGui_SetCursorPosY(im.ImGui_GetCursorPosY() - 3 * s);
         im.ImGui_PushFontFloat(null, im.ImGui_GetStyle().*.FontSizeBase * 0.8);
+        // centred on the bar; the text line inherits the bar's FramePadding.y baseline offset, hence the minus
+        im.ImGui_SetCursorPosY(im.ImGui_GetCursorPosY() + (10 * s - im.ImGui_GetFontSize()) / 2 - im.ImGui_GetStyle().*.FramePadding.y);
         const pw = im.ImGui_CalcTextSizeEx(pct_text.ptr, pct_text.ptr + pct_text.len, false, -1).x;
         im.ImGui_SetCursorPosX(im.ImGui_GetCursorPosX() + @max(0, tw - pw));
         kit.ui.text(text_id, pct_text, pal.muted, 0);

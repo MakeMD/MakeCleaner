@@ -107,7 +107,7 @@ pub const Fix = struct {
         const mark: []const u8 = if (busy) "  -  fixing..." else if (f.fixed[f.at]) "  -  fixed" else if (f.failed[f.at]) "  -  not fixed (administrator rights declined?)" else "";
         const counter: []const u8 = std.mem.print(&cbuf, "Issue {d} of {d}{s}", .{ f.at + 1, n, mark }) catch "";
         const cy = im.ImGui_GetCursorPosY();
-        im.ImGui_SetCursorPosY(cy + (32 * s - im.ImGui_GetFontSize()) / 2);
+        im.ImGui_SetCursorPosY(cy + (g.buttonHeight() - im.ImGui_GetFontSize()) / 2);
         im.ImGui_PushFontFloat(g.boldFont(), 0);
         kit.ui.text("regcounter", counter, pal.text, 0);
         im.ImGui_PopFont();

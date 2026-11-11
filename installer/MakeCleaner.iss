@@ -1,5 +1,5 @@
 ﻿; MakeCleaner - per-user installer. Build with tools\release.ps1 (it passes MyAppVersion from src\main.zig).
-; Ships dist\publish: MakeCleaner.exe (Zig, Dear ImGui and SQLite compiled in, no runtime dlls), rules\, THIRD-PARTY-NOTICES.txt.
+; Ships dist\publish: MakeCleaner.exe (Zig, Dear ImGui, SQLite and the Fira Sans UI font compiled in, no runtime dlls), rules\, THIRD-PARTY-NOTICES.txt.
 ; No autostart, no services, no bundled offers, no network. The only system object the app can own is the
 ; scheduled task the user creates in Options; uninstall removes it.
 ; ponytail: no license page, no custom wizard pages, no icon - Inno defaults are enough.
