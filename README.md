@@ -1,6 +1,6 @@
 # MakeCleaner
 
-Чистильник для Windows 10/11 у дусі класичного CCleaner — без телеметрії, реклами, бандлів і мережі. Zig 0.17 + Dear ImGui ([MakeKit](https://github.com/MakeMD/MakeKit)), один exe без рантайму; стара C#/WPF-версія лежить у `legacy/`.
+Чистильник для Windows 10/11 у дусі класичного CCleaner — без телеметрії, реклами, бандлів і мережі. Zig 0.17 + Dear ImGui ([MakeKit](https://github.com/MakeMD/MakeKit)), один exe без рантайму; стара C#/WPF-версія 1.x — в історії git.
 
 - **Cleaner:** правила Windows (`rules\Windows.ini`), браузери (Chrome, Edge, Brave, Vivaldi, Opera, Opera GX, Arc, Firefox; список cookies, які лишаються) і програми за [Winapp2.ini](https://github.com/MoscaDotTo/Winapp2) (CC BY-SA 4.0). Безпечне видалення 1/3/7/35 проходів, очищення вільного місця.
 - **Registry:** 15 категорій перевірок, перед виправленням — `.reg`-бекап.
