@@ -1,7 +1,9 @@
-﻿; MakeCleaner - per-user installer. Build with tools\release.ps1 (it passes MyAppVersion from src\main.zig).
-; Ships dist\publish: MakeCleaner.exe (Zig, Dear ImGui, SQLite and the Fira Sans UI font compiled in, no runtime dlls), rules\, THIRD-PARTY-NOTICES.txt.
-; No autostart, no services, no bundled offers, no network. The only system object the app can own is the
-; scheduled task the user creates in Options; uninstall removes it.
+﻿; MakeCleaner - per-user installer. Build with tools\release.ps1 (it passes MyAppVersion from build.zig.zon).
+; Ships dist\publish: MakeCleaner.exe (Zig, Dear ImGui, SQLite and the Fira Sans UI font compiled in, no runtime dlls),
+; MakeUpdate.exe (MakeKit updater: the only binary that goes online, to GitHub, when update checks are on), rules\,
+; THIRD-PARTY-NOTICES.txt. No autostart, no services, no bundled offers. The only system object the app can own is the
+; scheduled task the user creates in Options; uninstall removes it. MakeUpdate runs this setup with
+; /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /CLOSEAPPLICATIONS and starts the app again itself.
 ; ponytail: no license page, no custom wizard pages, no icon - Inno defaults are enough.
 
 #ifndef MyAppVersion
@@ -46,6 +48,11 @@ Source: "..\dist\publish\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdi
 Type: files; Name: "{app}\*_cor3.dll"
 Type: files; Name: "{app}\e_sqlite3.dll"
 
+; MakeUpdate moves its running exe aside while it runs this setup. Its log (%LOCALAPPDATA%\MakeUpdate) is shared
+; with MakePack: see CurUninstallStepChanged.
+[UninstallDelete]
+Type: files; Name: "{app}\MakeUpdate.exe.old"
+
 [Icons]
 Name: "{autoprograms}\MakeCleaner"; Filename: "{app}\MakeCleaner.exe"
 Name: "{autodesktop}\MakeCleaner"; Filename: "{app}\MakeCleaner.exe"; Tasks: desktopicon
@@ -70,11 +77,18 @@ fr.DeleteSettings=Also delete your MakeCleaner settings (checkbox states, includ
 [Code]
 // Settings live in %AppData%\MakeCleaner (installed mode). Asked, default No: a reinstall should not lose the
 // user's keep-lists. A silent uninstall keeps them. ponytail: other Windows users' %AppData% is never touched.
+const
+  MakePackKey = 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{8C3F2B7E-5D0A-4E1B-9F6C-3A2B1C0D9E8F}_is1';
+
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 var
   Dir: String;
 begin
   if CurUninstallStep <> usPostUninstall then Exit;
+  // %LOCALAPPDATA%\MakeUpdate (update.log) is shared by every app that ships MakeUpdate: keep it while MakePack
+  // (AppId in MakePack\installer\MakePack.iss) is still installed.
+  if not RegKeyExists(HKCU, MakePackKey) and not RegKeyExists(HKLM, MakePackKey) then
+    DelTree(ExpandConstant('{localappdata}\MakeUpdate'), True, True, True);
   Dir := ExpandConstant('{userappdata}\MakeCleaner');
   if UninstallSilent or not DirExists(Dir) then Exit;
   if MsgBox(FmtMessage(CustomMessage('DeleteSettings'), [Dir]), mbConfirmation, MB_YESNO or MB_DEFBUTTON2) = IDYES then

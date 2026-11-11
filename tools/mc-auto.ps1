@@ -5,6 +5,8 @@
 . (Join-Path $PSScriptRoot '..\..\MakeKit\tools\imgui-auto.ps1')
 # scans and analyses take longer than the kit's 5 s default
 $PSDefaultParameterValues['Wait-AutoLabel:TimeoutMs'] = 30000
+# the app version (build.zig.zon .version is the only place it is written)
+$McVersion = [regex]::Match((Get-Content -Raw (Join-Path $PSScriptRoot '..\build.zig.zon')), '\.version\s*=\s*"([^"]+)"').Groups[1].Value
 
 # Copies BinDir (exe + rules + notices, no pdb/ini/log/portable.dat) into a fresh sandbox; returns its paths.
 function New-McSandbox {
@@ -42,9 +44,10 @@ function Set-McIni {
 # Environment of every sandbox run: fixture TEMP/AppData, window on \\.\DISPLAY<Screen>, English UI
 # (MAKEKIT_LANG beats the Windows UI language and the saved Language= choice; the smokes compare English
 # labels and status texts). Pass -Env @{ MAKEKIT_LANG = 'uk' } to run a smoke in another language.
+# MAKEKIT_NO_UPDATE=1: no test run ever spawns MakeUpdate.exe (only tools\update-e2e.ps1 lifts it, against a local fake).
 function Get-McEnv {
     param([Parameter(Mandatory = $true)]$Sb, [int]$Screen = 1, [hashtable]$Env = @{})
-    $e = @{ TEMP = $Sb.Temp; TMP = $Sb.Temp; APPDATA = $Sb.Roaming; LOCALAPPDATA = $Sb.Local; MAKEKIT_DISPLAY = "\\.\DISPLAY$Screen"; MAKEKIT_LANG = 'en' }
+    $e = @{ TEMP = $Sb.Temp; TMP = $Sb.Temp; APPDATA = $Sb.Roaming; LOCALAPPDATA = $Sb.Local; MAKEKIT_DISPLAY = "\\.\DISPLAY$Screen"; MAKEKIT_LANG = 'en'; MAKEKIT_NO_UPDATE = '1' }
     foreach ($k in $Env.Keys) { $e[$k] = $Env[$k] }
     $e
 }
@@ -102,5 +105,6 @@ function Close-McApp($app) {
 
 function Remove-McSandbox($sb, $app) {
     if ($app -and -not $app.Process.HasExited) { $null = Stop-AutoApp $app }
-    if ($sb) { Start-Sleep -Milliseconds 200; Remove-Item -Recurse -Force $sb.Root -ErrorAction SilentlyContinue }
+    # retried: an AV scanner briefly holds the fresh exe (and so app\) open after a failed or finished run
+    if ($sb) { for ($i = 0; $i -lt 20 -and (Test-Path -LiteralPath $sb.Root); $i++) { Start-Sleep -Milliseconds 250; Remove-Item -LiteralPath $sb.Root -Recurse -Force -ErrorAction SilentlyContinue } }
 }

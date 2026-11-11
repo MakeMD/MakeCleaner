@@ -46,10 +46,12 @@ pub const t: en.Strings = .{
         .rail_registry = "Registre",
         .rail_tools = "Outils",
         .rail_options = "Options",
-        .footer = "MakeCleaner {0}  \u{00B7}  sans télémétrie, sans publicité, sans accès réseau",
+        .footer = "MakeCleaner {0}  \u{00B7}  sans télémétrie ni publicité\u{00A0}; l'application ne se connecte jamais - seul le programme de mise à jour facultatif contacte GitHub",
         .about_link = "À propos",
         .about_title = "À propos de MakeCleaner",
-        .about_text = "MakeCleaner {0}\n\nSans télémétrie, sans publicité, sans accès réseau.\n\n" ++
+        .about_text = "MakeCleaner {0}\n\nSans télémétrie ni publicité. L'application elle-même ne se connecte jamais à Internet - seul le " ++
+            "programme de mise à jour facultatif (MakeUpdate.exe) contacte GitHub pour rechercher de nouvelles versions\u{00A0}; " ++
+            "il se désactive dans Options > Paramètres.\n\n" ++
             "Règles des applications\u{00A0}: Winapp2.ini du projet Winapp2 (github.com/MoscaDotTo/Winapp2), " ++
             "sous licence CC BY-SA 4.0, fourni sans modification dans rules\\Winapp2.ini.\n\n" ++
             "Composants tiers\u{00A0}: voir THIRD-PARTY-NOTICES.txt à côté du programme.",
@@ -181,6 +183,18 @@ pub const t: en.Strings = .{
         .bad_format = "Format de l’heure de début\u{00A0}: yyyy-MM-dd HH:mm",
         .on_logon = "Le nettoyage planifié est activé (s’exécute à l’ouverture de session).",
         .on_next = "Le nettoyage planifié est activé. Prochaine exécution\u{00A0}: {0}",
+    },
+    .update = .{
+        .auto = "Rechercher automatiquement les mises à jour (une fois par jour, en arrière-plan)",
+        .check = "Rechercher des mises à jour",
+        .checking = "Recherche de mises à jour...",
+        .up_to_date = "MakeCleaner {0} est la dernière version.",
+        .available = "La version {0} est disponible",
+        .failed = "Impossible de rechercher des mises à jour\u{00A0}: {0}",
+        .update_now = "Mettre à jour",
+        .notes = "Notes de version",
+        .later = "Plus tard",
+        .start_failed = "Impossible de lancer le programme de mise à jour\u{00A0}: {0}",
     },
     .include = .{
         .intro = "Fichiers et dossiers supplémentaires à nettoyer. Dossier ou fichier, par ex. D:\\Logs.",

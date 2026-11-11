@@ -12,5 +12,6 @@ pub const Ctx = struct {
     exe_dir: []const u8,
 };
 
-pub const version = "2.0.0";
+/// build.zig.zon .version (via build.zig options): the only place the version is written.
+pub const version: []const u8 = @import("build_options").version;
 // The About text (footer dialog and Options > About) is tr().main.about_text with {0} = version.

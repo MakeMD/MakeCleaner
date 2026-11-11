@@ -1,6 +1,6 @@
 //! Settings.cs: flat key=value MakeCleaner.ini under an "[Options]" header. Keys are case-insensitive;
 //! lists are numbered keys (Include1=, Include2=, ...). portable.dat next to the exe -> the ini lives
-//! next to the exe, else in %AppData%\MakeCleaner (resolveDir).
+//! next to the exe, else in %AppData%\MakeCleaner (resolveDir; MAKECLEANER_SETTINGS_DIR overrides it for tests).
 const std = @import("std");
 const kit = @import("kit");
 const common = @import("common.zig");
@@ -18,6 +18,8 @@ pub fn resolveDir(gpa: Allocator, io: Io, exe_dir: []const u8) ![]u8 {
     if (Io.Dir.cwd().statFile(io, marker, .{})) |st| {
         if (st.kind == .file) return gpa.dupe(u8, exe_dir);
     } else |_| {}
+    // tests only (tools\update-e2e.ps1 runs an installed-mode copy): the known folder ignores %APPDATA%
+    if (try kit.win.getEnv(gpa, "MAKECLEANER_SETTINGS_DIR")) |dir| return dir;
     const appdata = try kit.win.knownFolder(gpa, &kit.w.FOLDERID_RoamingAppData);
     defer gpa.free(appdata);
     return path.join(gpa, &.{ appdata, "MakeCleaner" });

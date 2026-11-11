@@ -1,5 +1,5 @@
 # MakeCleaner release: zig build ReleaseSafe -> dist\publish -> portable zip -> Inno Setup installer, all into dist\.
-# Version comes from src\ui\ctx.zig (`pub const version`) - the only place it lives; build.zig.zon must agree. Pure ASCII (PS 5.1). Run from PowerShell (ISCC).
+# Version comes from build.zig.zon (.version) - the only place it lives (the exe gets it through build.zig options). Pure ASCII (PS 5.1). Run from PowerShell (ISCC).
 # ponytail: no icon, no signing, no CI - one script, native calls.
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent
@@ -7,11 +7,9 @@ $dist = Join-Path $root 'dist'
 $build = Join-Path $dist 'build'
 $publish = Join-Path $dist 'publish'
 
-$m = [regex]::Match((Get-Content -Raw (Join-Path $root 'src\ui\ctx.zig')), 'pub const version\s*=\s*"([^"]+)"')
-if (-not $m.Success) { throw 'could not read `pub const version` from src\ui\ctx.zig' }
+$m = [regex]::Match((Get-Content -Raw (Join-Path $root 'build.zig.zon')), '\.version\s*=\s*"([^"]+)"')
+if (-not $m.Success) { throw 'could not read .version from build.zig.zon' }
 $version = $m.Groups[1].Value
-$zon = [regex]::Match((Get-Content -Raw (Join-Path $root 'build.zig.zon')), '\.version\s*=\s*"([^"]+)"').Groups[1].Value
-if ($zon -ne $version) { throw "build.zig.zon .version ($zon) differs from src\ui\ctx.zig ($version)" }
 
 $zig = Join-Path $env:LOCALAPPDATA 'Programs\zig\0.17.1\zig.exe'
 if (-not (Test-Path $zig)) { throw "zig 0.17.1 not found at $zig" }
@@ -27,9 +25,10 @@ try { & $zig build -Doptimize=ReleaseSafe -p $build } finally { Pop-Location }
 if ($LASTEXITCODE) { throw "zig build failed (exit $LASTEXITCODE)" }
 New-Item -ItemType Directory -Force (Join-Path $publish 'rules') | Out-Null
 Copy-Item (Join-Path $build 'bin\MakeCleaner.exe') $publish
+Copy-Item (Join-Path $build 'bin\MakeUpdate.exe') $publish
 Copy-Item (Join-Path $build 'bin\rules\*') (Join-Path $publish 'rules')
 Copy-Item (Join-Path $root 'THIRD-PARTY-NOTICES.txt') $publish
-$shipped = 'MakeCleaner.exe', 'rules\Winapp2.ini', 'rules\Windows.ini', 'rules\README.md', 'THIRD-PARTY-NOTICES.txt'
+$shipped = 'MakeCleaner.exe', 'MakeUpdate.exe','rules\Winapp2.ini', 'rules\Windows.ini', 'rules\README.md', 'THIRD-PARTY-NOTICES.txt'
 foreach ($f in $shipped) {
     if (-not (Test-Path (Join-Path $publish $f))) { throw "publish output is missing $f" }
 }

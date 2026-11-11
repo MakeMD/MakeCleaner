@@ -45,10 +45,11 @@ pub const t: en.Strings = .{
         .rail_registry = "Rejestr",
         .rail_tools = "Narzędzia",
         .rail_options = "Opcje",
-        .footer = "MakeCleaner {0}  \u{00B7}  bez telemetrii, bez reklam, bez dostępu do sieci",
+        .footer = "MakeCleaner {0}  \u{00B7}  bez telemetrii i reklam; sam program nie łączy się z siecią - tylko opcjonalny aktualizator łączy się z GitHubem",
         .about_link = "O programie",
         .about_title = "O programie MakeCleaner",
-        .about_text = "MakeCleaner {0}\n\nBez telemetrii, bez reklam, bez dostępu do sieci.\n\n" ++
+        .about_text = "MakeCleaner {0}\n\nBez telemetrii i reklam. Sam program nigdy nie łączy się z siecią - tylko opcjonalny " ++
+            "aktualizator (MakeUpdate.exe) łączy się z GitHubem, aby sprawdzić nowe wersje; można go wyłączyć w Opcje > Ustawienia.\n\n" ++
             "Reguły aplikacji: Winapp2.ini autorstwa projektu Winapp2 (github.com/MoscaDotTo/Winapp2), " ++
             "licencja CC BY-SA 4.0, dołączony bez zmian w rules\\Winapp2.ini.\n\n" ++
             "Składniki innych firm: zobacz THIRD-PARTY-NOTICES.txt obok programu.",
@@ -180,6 +181,18 @@ pub const t: en.Strings = .{
         .bad_format = "Format czasu rozpoczęcia: yyyy-MM-dd HH:mm",
         .on_logon = "Zaplanowane czyszczenie jest włączone (uruchamiane przy logowaniu).",
         .on_next = "Zaplanowane czyszczenie jest włączone. Następne uruchomienie: {0}",
+    },
+    .update = .{
+        .auto = "Automatycznie sprawdzaj aktualizacje (raz dziennie, w tle)",
+        .check = "Sprawdź aktualizacje",
+        .checking = "Sprawdzanie aktualizacji...",
+        .up_to_date = "MakeCleaner {0} to najnowsza wersja.",
+        .available = "Dostępna jest wersja {0}",
+        .failed = "Nie udało się sprawdzić aktualizacji: {0}",
+        .update_now = "Aktualizuj teraz",
+        .notes = "Informacje o wydaniu",
+        .later = "Później",
+        .start_failed = "Nie udało się uruchomić aktualizatora: {0}",
     },
     .include = .{
         .intro = "Dodatkowe pliki i foldery do wyczyszczenia. Folder lub plik, np. D:\\Logs.",

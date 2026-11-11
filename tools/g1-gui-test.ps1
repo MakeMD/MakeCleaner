@@ -143,7 +143,7 @@ try {
 
     # ---------------- About
     Invoke-AutoClick $app 'About##about'
-    $null = Wait-AutoLabel $app 'MakeCleaner 2.0.0*##msgText' 5000
+    $null = Wait-AutoLabel $app "MakeCleaner $McVersion*##msgText" 5000
     Shot 'about'
     Invoke-AutoKey $app 'Enter'; $null = Invoke-AutoFrames $app 3
     Gone '*##msgText'
@@ -235,7 +235,7 @@ try {
     Write-Host ("radio item: " + ($r | ConvertTo-Json -Compress))
 
     Invoke-AutoClick $app 'About##about'
-    $null = Wait-AutoLabel $app 'MakeCleaner 2.0.0*##msgText' 5000
+    $null = Wait-AutoLabel $app "MakeCleaner $McVersion*##msgText" 5000
     Shot 'about-3frames'
     Settle 600
     Shot 'about-settled'

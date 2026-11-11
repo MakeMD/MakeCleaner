@@ -187,6 +187,19 @@ pub const Strings = struct {
         on_logon: S,
         on_next: S,
     },
+    /// Updates (src/ui/update.zig): Options > Settings toggle, Options > About button, the banner.
+    update: struct {
+        auto: S,
+        check: S,
+        checking: S,
+        up_to_date: S,
+        available: S,
+        failed: S,
+        update_now: S,
+        notes: S,
+        later: S,
+        start_failed: S,
+    },
     include: struct {
         intro: S,
         files_only: S,
@@ -522,10 +535,11 @@ pub const t: Strings = .{
         .rail_registry = "Registry",
         .rail_tools = "Tools",
         .rail_options = "Options",
-        .footer = "MakeCleaner {0}  \u{00B7}  no telemetry, no ads, no network access",
+        .footer = "MakeCleaner {0}  \u{00B7}  no telemetry, no ads; the app itself never goes online - only the optional updater contacts GitHub",
         .about_link = "About",
         .about_title = "About MakeCleaner",
-        .about_text = "MakeCleaner {0}\n\nNo telemetry, no ads, no network access.\n\n" ++
+        .about_text = "MakeCleaner {0}\n\nNo telemetry, no ads. The app itself never goes online - only the optional updater " ++
+            "(MakeUpdate.exe) contacts GitHub to look for new versions; it can be turned off in Options > Settings.\n\n" ++
             "Applications rules: Winapp2.ini by the Winapp2 project (github.com/MoscaDotTo/Winapp2), " ++
             "licensed CC BY-SA 4.0, shipped unmodified in rules\\Winapp2.ini.\n\n" ++
             "Third-party components: see THIRD-PARTY-NOTICES.txt next to the program.",
@@ -657,6 +671,18 @@ pub const t: Strings = .{
         .bad_format = "Start time format: yyyy-MM-dd HH:mm",
         .on_logon = "Scheduled cleaning is on (runs at sign-in).",
         .on_next = "Scheduled cleaning is on. Next run: {0}",
+    },
+    .update = .{
+        .auto = "Check for updates automatically (once a day, in the background)",
+        .check = "Check for updates",
+        .checking = "Checking for updates...",
+        .up_to_date = "MakeCleaner {0} is the latest version.",
+        .available = "Version {0} is available",
+        .failed = "Could not check for updates: {0}",
+        .update_now = "Update now",
+        .notes = "Release notes",
+        .later = "Later",
+        .start_failed = "Could not start the updater: {0}",
     },
     .include = .{
         .intro = "Extra files and folders to clean. Folder or file, e.g. D:\\Logs.",

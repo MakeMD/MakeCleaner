@@ -12,6 +12,7 @@ const ui_cleaner = @import("ui/cleaner.zig");
 const ui_registry = @import("ui/registry.zig");
 const ui_tools = @import("ui/tools.zig");
 const ui_options = @import("ui/options.zig");
+const update = @import("ui/update.zig");
 
 const im = kit.im;
 const App = kit.app.App;
@@ -43,6 +44,8 @@ pub fn main(init: std.process.Init) !u8 {
     defer state.tools.deinit(&state.ctx);
     state.options = try ui_options.Page.init(&state.ctx);
     defer state.options.deinit(&state.ctx);
+    defer update.deinit(gpa);
+    update.startup(&state.ctx); // background (kit.jobs): MakeUpdate.exe check, at most once per 24 h
     app.run(.{ .user = &state, .frame = frame, .close_requested = closeRequested });
     return 0;
 }
@@ -133,6 +136,7 @@ fn frame(app: *App) void {
     // ---- page
     im.ImGui_SetCursorScreenPos(.{ .x = pos.x + rail_w + 16 * sc, .y = pos.y + 14 * sc });
     if (im.ImGui_BeginChild("##page", .{ .x = size.x - rail_w - 32 * sc, .y = body_h - 26 * sc }, 0, im.ImGuiWindowFlags_NoBackground)) {
+        update.frame(&s.ctx); // the "new version" banner above the page, while one is offered
         switch (s.page) {
             .cleaner => s.cleaner.draw(&s.ctx),
             .registry => s.registry.draw(&s.ctx),
@@ -147,7 +151,7 @@ fn frame(app: *App) void {
     im.ImDrawList_AddRectFilled(dl, .{ .x = pos.x, .y = top }, .{ .x = pos.x + size.x, .y = pos.y + size.y }, kit.app.colorU32(pal.surface));
     im.ImDrawList_AddLine(dl, .{ .x = pos.x, .y = top }, .{ .x = pos.x + size.x, .y = top }, kit.app.colorU32(pal.line));
     const m = &tr().main;
-    var fb: [256]u8 = undefined;
+    var fb: [512]u8 = undefined;
     const footer = kit.i18n.fmt(&fb, m.footer, .{ctx_mod.version});
     im.ImDrawList_AddTextImFontPtr(dl, app.fonts.regular, 12 * sc, .{ .x = pos.x + 12 * sc, .y = top + 6 * sc }, kit.app.colorU32(pal.muted), footer.ptr);
     // About link on the right -> themed info dialog

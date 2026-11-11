@@ -42,6 +42,8 @@ pub fn build(b: *std.Build) void {
     exe.root_module.addWin32ResourceFile(.{ .file = b.path("app.rc"), .include_paths = &.{kit_dep.namedLazyPath("res")}, .flags = versionDefines(b) });
     exe.subsystem = .windows;
     b.installArtifact(exe);
+    // MakeUpdate.exe (MakeKit, the only networked binary) next to the exe: src/ui/update.zig spawns it
+    b.installArtifact(kit_dep.artifact("MakeUpdate"));
     // rules next to the exe (Winapp2.ini must ship with its CC BY-SA attribution in README.md)
     b.installDirectory(.{ .source_dir = b.path("rules"), .install_dir = .bin, .install_subdir = "rules" });
 
@@ -65,11 +67,14 @@ fn module(b: *std.Build, root: []const u8, imports: []const std.Build.Module.Imp
     const m = b.createModule(.{ .root_source_file = b.path(root), .target = target, .optimize = optimize, .imports = imports });
     // Engine.BuiltInRules: Windows.ini is compiled in so the Windows tab can never go missing (`@embedFile("windows_ini")`).
     m.addAnonymousImport("windows_ini", .{ .root_source_file = b.path("rules/Windows.ini") });
+    // `@import("build_options").version` = build.zig.zon's .version (src/ui/ctx.zig): the one place it is kept
+    const opts = b.addOptions();
+    opts.addOption([]const u8, "version", @import("build.zig.zon").version);
+    m.addOptions("build_options", opts);
     return m;
 }
 
-/// app.rc's VERSIONINFO numbers and string, from build.zig.zon's .version (tools\release.ps1 checks it matches
-/// src\ui\ctx.zig's `version`).
+/// app.rc's VERSIONINFO numbers and string, from build.zig.zon's .version.
 fn versionDefines(b: *std.Build) []const []const u8 {
     const ver = @import("build.zig.zon").version;
     const v = std.SemanticVersion.parse(ver) catch @panic("build.zig.zon .version is not semver");

@@ -6,6 +6,7 @@ const ctx_mod = @import("ctx.zig");
 const Ctx = ctx_mod.Ctx;
 const ui = @import("tools_ui.zig");
 const lists = @import("options_lists.zig");
+const update = @import("update.zig");
 const cookies_page = @import("options_cookies.zig");
 const securedelete = @import("../core/securedelete.zig");
 const schedule = @import("../core/schedule.zig");
@@ -65,8 +66,10 @@ pub const Page = struct {
                 },
                 else => {
                     ui.title(ctx, o.nav_about);
-                    var ab: [1024]u8 = undefined;
+                    var ab: [2048]u8 = undefined;
                     ui.mutedWrapped(T.fmt(&ab, tr().main.about_text, .{ctx_mod.version}), @min(640 * ui.scale(), im.ImGui_GetContentRegionAvail().x));
+                    im.ImGui_Dummy(.{ .x = 0, .y = 8 * ui.scale() });
+                    update.aboutRow(ctx);
                 },
             }
         }
@@ -127,6 +130,7 @@ fn settingsPage(ctx: *Ctx) void {
             save(ctx);
         }
     }
+    update.settingRow(ctx);
 }
 
 // ---------------------------------------------------------------- Schedule

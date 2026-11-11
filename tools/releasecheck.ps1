@@ -2,7 +2,8 @@
 # 1. Unzips the newest dist\MakeCleaner-<ver>-portable.zip into a temp folder.
 # 2. Import table of that MakeCleaner.exe (PE import directory parsed here, no tools): FAIL on ws2_32, wsock32,
 #    wininet, winhttp, urlmon, iphlpapi, any DLL with "net" in its name, dnsapi beyond DnsFlushResolverCache (the
-#    DNS Cache rule), or any delay-load import (not inspected). Prints the imported DLLs.
+#    DNS Cache rule), or any delay-load import (not inspected). Prints the imported DLLs. MakeUpdate.exe (the
+#    updater, shipped next to it) may import only winhttp, kernel32, ntdll (+ api-ms-win-*).
 # 3. Runs every tools\*smoke*.ps1 with -BinDir = that copy (each smoke copies it into its own
 #    %TEMP%\makecleaner-test-<tag>-<rand> sandbox and only ever cleans its own fixtures).
 # 4. Meanwhile a background job polls Get-NetTCPConnection / Get-NetUDPEndpoint for every MakeCleaner process running
@@ -82,6 +83,16 @@ foreach ($i in $imports) {
 }
 Write-Host ("imports: {0} DLLs, {1} not allowed" -f $imports.Count, $importFail.Count)
 
+# MakeUpdate.exe (MakeKit updater, the only binary allowed online): WinHTTP and plain system DLLs only.
+$updAllowed = 'winhttp.dll', 'kernel32.dll', 'ntdll.dll'
+$updImports = @(Get-PeImports (Join-Path $bin 'MakeUpdate.exe'))
+foreach ($i in $updImports) {
+    $n = $i.Dll.ToLowerInvariant()
+    $ok = -not $i.Delay -and ($updAllowed -contains $n -or $n -like 'api-ms-win-*')
+    if (-not $ok) { $importFail += "MakeUpdate.exe: $n" }
+    Write-Host ("  MakeUpdate import: {0,-28} {1,4} functions{2}" -f $i.Dll, @($i.Functions).Count, $(if ($ok) { '' } else { '  <- not allowed' }))
+}
+
 # ---- smokes + network poll + traces
 function Snap {
     $s = @{}
@@ -106,6 +117,8 @@ $job = Start-Job -ArgumentList $sandboxes, $stop -ScriptBlock {
             $hits += @(Get-NetTCPConnection -OwningProcess $ids -ErrorAction SilentlyContinue | ForEach-Object { "TCP pid=$($_.OwningProcess) $($_.LocalAddress):$($_.LocalPort) -> $($_.RemoteAddress):$($_.RemotePort) $($_.State)" })
             $hits += @(Get-NetUDPEndpoint -OwningProcess $ids -ErrorAction SilentlyContinue | ForEach-Object { "UDP pid=$($_.OwningProcess) $($_.LocalAddress):$($_.LocalPort)" })
         }
+        # the smokes run with MAKEKIT_NO_UPDATE=1: the updater must never start from a sandbox
+        $hits += @(Get-Process MakeUpdate -ErrorAction SilentlyContinue | Where-Object { $_.Path -like "$sandboxes\*" } | ForEach-Object { "MakeUpdate.exe started: pid=$($_.Id) $($_.Path)" })
         Start-Sleep -Milliseconds 100
     }
     [pscustomobject]@{ Samples = $samples; Hits = @($hits | Select-Object -Unique) }
@@ -115,7 +128,8 @@ $failed = @()
 try {
     foreach ($s in Get-ChildItem $PSScriptRoot -Filter '*smoke*.ps1' | Sort-Object Name) {
         $sw = [Diagnostics.Stopwatch]::StartNew()
-        $out = & powershell -NoProfile -ExecutionPolicy Bypass -File $s.FullName -Screen $Screen -BinDir $bin *>&1 | Out-String
+        # Continue: under Stop, PS 5.1 turns the smoke's stderr into a terminating error (no FAIL line, no cleanup)
+        $out = & { $ErrorActionPreference = 'Continue'; & powershell -NoProfile -ExecutionPolicy Bypass -File $s.FullName -Screen $Screen -BinDir $bin *>&1 } | Out-String
         $ok = $LASTEXITCODE -eq 0 -and $out -match 'SMOKE OK'
         Write-Host ("{0,-24} {1}  ({2:N0} s)" -f $s.Name, $(if ($ok) { 'SMOKE OK' } else { 'FAIL' }), $sw.Elapsed.TotalSeconds)
         if (-not $ok) { $failed += $s.Name; Write-Host $out }
@@ -132,7 +146,8 @@ Write-Host ("network: {0} samples of running MakeCleaner processes, {1} connecti
 $net.Hits | ForEach-Object { Write-Host "  $_" }
 Write-Host ("outside the portable folder: {0} new entries, {1} named MakeCleaner" -f $new.Count, $ours.Count)
 $new | ForEach-Object { Write-Host "  new: $_" }
-Remove-Item $work -Recurse -Force -ErrorAction SilentlyContinue
+# retried: an AV scanner may still hold the unzipped exe
+for ($i = 0; $i -lt 20 -and (Test-Path -LiteralPath $work); $i++) { Start-Sleep -Milliseconds 250; Remove-Item -LiteralPath $work -Recurse -Force -ErrorAction SilentlyContinue }
 
 if ($importFail.Count -or $failed.Count -or $net.Samples -eq 0 -or $net.Hits.Count -or $ours.Count) {
     throw ("RELEASE CHECK FAILED (imports: {0}; smokes: {1}; samples: {2}; network: {3}; MakeCleaner entries: {4})" -f ($importFail -join ','), ($failed -join ','), $net.Samples, $net.Hits.Count, $ours.Count)

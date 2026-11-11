@@ -44,10 +44,11 @@ pub const t: en.Strings = .{
         .rail_registry = "Registrierung",
         .rail_tools = "Extras",
         .rail_options = "Optionen",
-        .footer = "MakeCleaner {0}  \u{00B7}  keine Telemetrie, keine Werbung, kein Netzwerkzugriff",
+        .footer = "MakeCleaner {0}  \u{00B7}  keine Telemetrie, keine Werbung; das Programm selbst geht nie online - nur der optionale Updater kontaktiert GitHub",
         .about_link = "Info",
         .about_title = "Info über MakeCleaner",
-        .about_text = "MakeCleaner {0}\n\nKeine Telemetrie, keine Werbung, kein Netzwerkzugriff.\n\n" ++
+        .about_text = "MakeCleaner {0}\n\nKeine Telemetrie, keine Werbung. Das Programm selbst geht nie online - nur der optionale " ++
+            "Updater (MakeUpdate.exe) kontaktiert GitHub, um nach neuen Versionen zu suchen; abschaltbar unter Optionen > Einstellungen.\n\n" ++
             "Regeln für Anwendungen: Winapp2.ini des Winapp2-Projekts (github.com/MoscaDotTo/Winapp2), " ++
             "lizenziert unter CC BY-SA 4.0, unverändert enthalten in rules\\Winapp2.ini.\n\n" ++
             "Komponenten von Drittanbietern: siehe THIRD-PARTY-NOTICES.txt neben dem Programm.",
@@ -179,6 +180,18 @@ pub const t: en.Strings = .{
         .bad_format = "Format der Startzeit: yyyy-MM-dd HH:mm",
         .on_logon = "Die geplante Bereinigung ist aktiv (wird bei der Anmeldung ausgeführt).",
         .on_next = "Die geplante Bereinigung ist aktiv. Nächste Ausführung: {0}",
+    },
+    .update = .{
+        .auto = "Automatisch nach Updates suchen (einmal täglich, im Hintergrund)",
+        .check = "Nach Updates suchen",
+        .checking = "Suche nach Updates...",
+        .up_to_date = "MakeCleaner {0} ist die neueste Version.",
+        .available = "Version {0} ist verfügbar",
+        .failed = "Suche nach Updates fehlgeschlagen: {0}",
+        .update_now = "Jetzt aktualisieren",
+        .notes = "Versionshinweise",
+        .later = "Später",
+        .start_failed = "Der Updater konnte nicht gestartet werden: {0}",
     },
     .include = .{
         .intro = "Zusätzliche Dateien und Ordner zum Bereinigen. Ordner oder Datei, z. B. D:\\Logs.",

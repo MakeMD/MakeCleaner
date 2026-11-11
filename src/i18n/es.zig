@@ -44,10 +44,11 @@ pub const t: en.Strings = .{
         .rail_registry = "Registro",
         .rail_tools = "Herramientas",
         .rail_options = "Opciones",
-        .footer = "MakeCleaner {0}  \u{00B7}  sin telemetría, sin anuncios, sin acceso a la red",
+        .footer = "MakeCleaner {0}  \u{00B7}  sin telemetría ni anuncios; la aplicación nunca se conecta a internet - solo el actualizador opcional contacta con GitHub",
         .about_link = "Acerca de",
         .about_title = "Acerca de MakeCleaner",
-        .about_text = "MakeCleaner {0}\n\nSin telemetría, sin anuncios, sin acceso a la red.\n\n" ++
+        .about_text = "MakeCleaner {0}\n\nSin telemetría ni anuncios. La aplicación nunca se conecta a internet - solo el actualizador " ++
+            "opcional (MakeUpdate.exe) contacta con GitHub para buscar nuevas versiones; se puede desactivar en Opciones > Configuración.\n\n" ++
             "Reglas de aplicaciones: Winapp2.ini del proyecto Winapp2 (github.com/MoscaDotTo/Winapp2), " ++
             "con licencia CC BY-SA 4.0, incluido sin modificar en rules\\Winapp2.ini.\n\n" ++
             "Componentes de terceros: consulte THIRD-PARTY-NOTICES.txt junto al programa.",
@@ -179,6 +180,18 @@ pub const t: en.Strings = .{
         .bad_format = "Formato de la hora de inicio: yyyy-MM-dd HH:mm",
         .on_logon = "La limpieza programada está activada (se ejecuta al iniciar sesión).",
         .on_next = "La limpieza programada está activada. Próxima ejecución: {0}",
+    },
+    .update = .{
+        .auto = "Buscar actualizaciones automáticamente (una vez al día, en segundo plano)",
+        .check = "Buscar actualizaciones",
+        .checking = "Buscando actualizaciones...",
+        .up_to_date = "MakeCleaner {0} es la versión más reciente.",
+        .available = "La versión {0} está disponible",
+        .failed = "No se pudieron buscar actualizaciones: {0}",
+        .update_now = "Actualizar ahora",
+        .notes = "Notas de la versión",
+        .later = "Más tarde",
+        .start_failed = "No se pudo iniciar el actualizador: {0}",
     },
     .include = .{
         .intro = "Archivos y carpetas adicionales que limpiar. Carpeta o archivo, p. ej. D:\\Logs.",
