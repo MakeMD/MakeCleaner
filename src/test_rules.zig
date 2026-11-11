@@ -1235,3 +1235,9 @@ test "/auto log line: yyyy-MM-dd HH:mm:ss /auto: <line> CRLF, appended" {
     try testing.expectEqualStrings("first", l1[27..]);
     try testing.expect(std.mem.endsWith(u8, l2, "| Cleaning complete: 0 files removed"));
 }
+
+test "displayName drops Winapp2's trailing \" *\" only" {
+    try std.testing.expectEqualStrings("Microsoft Visual Studio", rules.displayName("Microsoft Visual Studio *"));
+    try std.testing.expectEqualStrings("Temporary Files", rules.displayName("Temporary Files"));
+    try std.testing.expectEqualStrings("*", rules.displayName("*"));
+}

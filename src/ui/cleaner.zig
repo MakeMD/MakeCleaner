@@ -264,7 +264,7 @@ pub const Page = struct {
                         p.dialog.show(tag_warn, n.name, .danger, &.{ "Turn on", "Cancel" }, "{s}", .{n.warning.?});
                     } else n.on = want;
                 }
-                if (n.warning) |w| im.ImGui_SetItemTooltipUnformatted(w.ptr);
+                kit.ui.checkboxTooltip(n.label.ptr, n.warning); // whole name when cut with "...", + the warning
             }
             im.ImGui_TreePop();
         }
@@ -603,7 +603,7 @@ pub const Page = struct {
         var out: std.ArrayList(Line) = .empty;
         var nb: [32]u8 = undefined;
         if (!p.view_files) {
-            for (p.pass.summary) |r| try add(a, &out, r.name, try a.printSentinel("{s} items", .{ui.n0(&nb, r.items)}, 0), r.bytes, null);
+            for (p.pass.summary) |r| try add(a, &out, rules.displayName(r.name), try a.printSentinel("{s} items", .{ui.n0(&nb, r.items)}, 0), r.bytes, null);
             if (p.pass.wipe()) try add(a, &out, "Wipe Free Space", "free space", 0, null);
             return out.items;
         }
@@ -687,8 +687,8 @@ fn browserTree(a: Allocator, s: *const Settings, list: []const browsers.BrowserI
 
 fn node(a: Allocator, tab: []const u8, name: []const u8, key: []const u8, warning: ?[]const u8, idx: usize, on: bool, wipe: bool) !Node {
     return .{
-        .label = try a.printSentinel("{s}##{s}i:{s}", .{ name, tab, key }, 0),
-        .name = name,
+        .label = try a.printSentinel("{s}##{s}i:{s}", .{ rules.displayName(name), tab, key }, 0),
+        .name = rules.displayName(name),
         .key = key,
         .warning = if (warning) |w| try a.dupeSentinel(u8, w, 0) else null,
         .idx = idx,

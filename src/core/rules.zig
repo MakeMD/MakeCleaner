@@ -99,6 +99,12 @@ pub const ExcludeKey = struct {
     }
 };
 
+/// What the UI shows for a rule name: Winapp2's trailing " *" (entry not in CCleaner's own list) dropped.
+/// Settings keys and rule identity keep the full name (existing MakeCleaner.ini files).
+pub fn displayName(name: []const u8) []const u8 {
+    return std.mem.cutSuffix(u8, name, " *") orelse name;
+}
+
 /// class Rule: one checkbox = one INI section (keys case-insensitive and numbered: FileKey1..n).
 pub const Rule = struct {
     name: []const u8 = "",

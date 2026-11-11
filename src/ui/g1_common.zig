@@ -77,6 +77,11 @@ pub fn progressStrip(panel_id: [*:0]const u8, status: []const u8, status_id: []c
         if (!can_cancel) im.ImGui_EndDisabled();
         im.ImGui_SetCursorPosY(@max(y1, y0 + im.ImGui_GetFrameHeight() + im.ImGui_GetStyle().*.ItemSpacing.y) + 8 * s - im.ImGui_GetStyle().*.ItemSpacing.y);
         const tw = 110 * s;
+        // idle, nothing analyzed/scanned yet: status line only; the bar row is drawn fully transparent so the
+        // strip keeps its height (ponytail: alpha 0 instead of measuring the row)
+        const idle = total == 0 and !can_cancel;
+        if (idle) im.ImGui_PushStyleVar(im.ImGuiStyleVar_Alpha, 0);
+        defer if (idle) im.ImGui_PopStyleVar();
         const frac: f32 = if (total == 0) 0 else @as(f32, @floatFromInt(@min(done, total))) / @as(f32, @floatFromInt(total));
         im.ImGui_ProgressBar(frac, .{ .x = avail - tw - 10 * s, .y = 10 * s }, "");
         im.ImGui_SameLineEx(0, 10 * s);
