@@ -2,6 +2,7 @@
 const std = @import("std");
 
 test {
+    _ = @import("i18n/tr.zig"); // every language table vs English, the name maps vs the core data
     _ = @import("ui/g1_common.zig");
     _ = @import("ui/tools_ui.zig");
     _ = @import("ui/cleaner.zig");

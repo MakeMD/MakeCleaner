@@ -28,7 +28,7 @@ try {
     }
     function Open() {
         $a = Start-McApp $sb -Screen $Screen
-        $null = Wait-AutoLabel $a '*applications detected##status' # app detection must not overwrite the analyze status later
+        $null = Wait-AutoLabel $a '*detected##status' # app detection must not overwrite the analyze status later
         $a
     }
 

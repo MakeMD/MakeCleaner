@@ -5,6 +5,8 @@ const std = @import("std");
 const kit = @import("kit");
 const Ctx = @import("ctx.zig").Ctx;
 const elevated = @import("../core/elevated.zig");
+const T = @import("../i18n/tr.zig");
+const tr = T.tr;
 
 const im = kit.im;
 const w = kit.w;
@@ -141,6 +143,23 @@ pub fn mutedWrapped(text: []const u8, width: f32) void {
     im.ImGui_PopStyleColor();
 }
 
+/// Instead of SameLineEx(0, gap) before an item `width` wide: same line when it still fits the content region,
+/// else a new line starting at window-local x `wrap_x` (0 = the normal line start). Translations differ in
+/// length, so a form row that fits in English wraps in French instead of being cut off or scrolled.
+pub fn sameLineOrWrap(width: f32, gap: f32, wrap_x: f32) void {
+    // ContentRegionAvail is the visible width (ContentRegionRect) even in a HorizontalScrollbar host; the cursor
+    // is on the next line now
+    const right = im.ImGui_GetCursorScreenPos().x + im.ImGui_GetContentRegionAvail().x;
+    if (im.ImGui_GetItemRectMax().x + gap + width <= right) return im.ImGui_SameLineEx(0, gap);
+    if (wrap_x > 0) im.ImGui_SetCursorPosX(wrap_x);
+}
+
+/// Width of a kit checkbox with this label (font-size box + inner spacing + the visible part of the text).
+pub fn checkboxW(lbl: []const u8) f32 {
+    const shown = lbl[0 .. std.mem.find(u8, lbl, "##") orelse lbl.len];
+    return im.ImGui_GetFontSize() + im.ImGui_GetStyle().*.ItemInnerSpacing.x + textW(shown);
+}
+
 /// Text aligned with framed widgets on the same line.
 pub fn label(text: [*:0]const u8) void {
     im.ImGui_AlignTextToFramePadding();
@@ -203,6 +222,10 @@ pub fn Text(comptime n: usize) type {
             const out: []const u8 = std.mem.print(&t.buf, fmt, args) catch &t.buf;
             t.len = out.len;
         }
+        /// A translated "{0}" template (kit.i18n.fmt), cut on a UTF-8 boundary when too long.
+        pub fn tset(t: *@This(), template: []const u8, args: anytype) void {
+            t.len = T.fmt(&t.buf, template, args).len;
+        }
         pub fn slice(t: *const @This()) []const u8 {
             return t.buf[0..t.len];
         }
@@ -234,7 +257,7 @@ pub fn subNav(id: []const u8, items: []const NavItem, sel: *usize, height: f32) 
         im.ImGui_PushStyleVarImVec2(im.ImGuiStyleVar_SelectableTextAlign, .{ .x = 0, .y = 0.5 });
         for (items, 0..) |it, i| {
             const t = it[0];
-            var lb: [96]u8 = undefined;
+            var lb: [256]u8 = undefined;
             im.ImGui_SetCursorPosX(0);
             const pos = im.ImGui_GetCursorScreenPos();
             const h = im.ImGui_GetFontSize() + 18 * s;
@@ -309,13 +332,19 @@ pub const Dialog = struct {
         d.want_open = true;
     }
 
-    /// ToolsUi.Confirm: the title doubles as the action button.
-    pub fn confirm(d: *Dialog, tag: u32, ttl: []const u8, comptime fmt: []const u8, args: anytype) void {
-        d.show(tag, ttl, .danger, &.{ ttl, "Cancel" }, fmt, args);
+    /// `show` with a translated "{0}" template (kit.i18n.fmt) as the text.
+    pub fn showT(d: *Dialog, tag: u32, ttl: []const u8, kind: kit.ui.MsgKind, buttons: []const []const u8, template: []const u8, args: anytype) void {
+        var tb: [1200]u8 = undefined;
+        d.show(tag, ttl, kind, buttons, "{s}", .{T.fmt(&tb, template, args)});
     }
 
-    pub fn info(d: *Dialog, tag: u32, ttl: []const u8, comptime fmt: []const u8, args: anytype) void {
-        d.show(tag, ttl, .info, &.{"OK"}, fmt, args);
+    /// ToolsUi.Confirm: the title doubles as the action button.
+    pub fn confirm(d: *Dialog, tag: u32, ttl: []const u8, template: []const u8, args: anytype) void {
+        d.showT(tag, ttl, .danger, &.{ ttl, tr().common.cancel }, template, args);
+    }
+
+    pub fn info(d: *Dialog, tag: u32, ttl: []const u8, template: []const u8, args: anytype) void {
+        d.showT(tag, ttl, .info, &.{tr().common.ok}, template, args);
     }
 
     pub fn draw(d: *Dialog) ?Answer {
@@ -334,7 +363,8 @@ pub const Dialog = struct {
 /// On a "Restart as administrator" answer call `restartAsAdmin`.
 pub fn requireAdmin(d: *Dialog, tag: u8, what: []const u8) bool {
     if (elevated.isAdmin()) return true;
-    d.show(tag, "Administrator rights", .question, &.{ "Restart as administrator", "Cancel" }, "{s} requires administrator rights. Restart MakeCleaner as administrator?", .{what});
+    const c = &tr().common;
+    d.showT(tag, c.admin_title, .question, &.{ c.restart_admin, c.cancel }, c.requires_admin, .{what});
     return false;
 }
 
@@ -371,11 +401,12 @@ pub fn saveText(ctx: *Ctx, dlg: *Dialog, name: []const u8, lines: []const []cons
     const file_name: []const u8 = std.mem.print(&nb, "MakeCleaner {s}.txt", .{name}) catch "MakeCleaner.txt";
     const path = (kit.win.saveFile(ctx.gpa, ctx.app.hwnd, .{
         .file_name = file_name,
-        .filters = &.{.{ .name = "Text files (*.txt)", .spec = "*.txt" }},
+        .filters = &.{.{ .name = tr().common.text_files, .spec = "*.txt" }},
         .default_ext = "txt",
     }) catch null) orelse return;
     defer ctx.gpa.free(path);
-    writeLines(ctx.io, path, lines) catch |e| dlg.show(tag_write_error, "Save to text file", .err, &.{"OK"}, "Could not write {s}:\n{f}", .{ path, kit.win.errText(e) });
+    const c = &tr().common;
+    writeLines(ctx.io, path, lines) catch |e| dlg.showT(tag_write_error, c.save_title, .err, &.{c.ok}, c.could_not_write, .{ path, kit.win.errText(e) });
 }
 
 pub fn writeLines(io: std.Io, path: []const u8, lines: []const []const u8) !void {
@@ -481,22 +512,17 @@ test parseInstallDate {
     try t.expectEqual(null, parseInstallDate("+5/7/2025"));
 }
 
-/// .NET "N0" (en-US): 1234567 -> "1,234,567".
+/// .NET "N0" in the UI language: 1234567 -> "1,234,567" (de "1.234.567", uk "1 234 567").
 pub fn n0(buf: []u8, n: u64) []const u8 {
     var tmp: [32]u8 = undefined;
     const digits = std.mem.print(&tmp, "{d}", .{n}) catch return "";
-    var o: usize = 0;
+    const sep = kit.i18n.groupSep(kit.i18n.current());
+    var wr: std.Io.Writer = .fixed(buf);
     for (digits, 0..) |c, i| {
-        if (i > 0 and (digits.len - i) % 3 == 0) {
-            if (o >= buf.len) return buf[0..o];
-            buf[o] = ',';
-            o += 1;
-        }
-        if (o >= buf.len) return buf[0..o];
-        buf[o] = c;
-        o += 1;
+        if (i > 0 and (digits.len - i) % 3 == 0) wr.writeAll(sep) catch break;
+        wr.writeByte(c) catch break;
     }
-    return buf[0..o];
+    return wr.buffered();
 }
 
 test n0 {
@@ -505,12 +531,20 @@ test n0 {
     try std.testing.expectEqualStrings("999", n0(&b, 999));
     try std.testing.expectEqualStrings("1,000", n0(&b, 1000));
     try std.testing.expectEqualStrings("12,345,678", n0(&b, 12345678));
+    defer kit.i18n.set(.en);
+    kit.i18n.set(.de);
+    try std.testing.expectEqualStrings("12.345.678", n0(&b, 12345678));
+    kit.i18n.set(.uk);
+    try std.testing.expectEqualStrings("1\u{A0}000", n0(&b, 1000));
 }
 
-/// .NET "0.#": one decimal, "12" rather than "12.0".
+/// .NET "0.#": one decimal, "12" rather than "12.0"; the UI language's decimal separator.
 pub fn fmt01(buf: []u8, x: f64) []const u8 {
     const r = @round(x * 10) / 10;
-    return (if (r == @trunc(r)) std.mem.print(buf, "{d}", .{@as(i64, @intFromFloat(r))}) else std.mem.print(buf, "{d:.1}", .{r})) catch "";
+    if (r == @trunc(r)) return std.mem.print(buf, "{d}", .{@as(i64, @intFromFloat(r))}) catch "";
+    const out = std.mem.print(buf, "{d:.1}", .{r}) catch return "";
+    out[out.len - 2] = kit.i18n.decimalSep(kit.i18n.current());
+    return out;
 }
 
 test fmt01 {
@@ -518,6 +552,9 @@ test fmt01 {
     try std.testing.expectEqualStrings("12", fmt01(&b, 12.04));
     try std.testing.expectEqualStrings("12.5", fmt01(&b, 12.46));
     try std.testing.expectEqualStrings("0", fmt01(&b, 0));
+    defer kit.i18n.set(.en);
+    kit.i18n.set(.fr);
+    try std.testing.expectEqualStrings("129,6", fmt01(&b, 129.6));
 }
 
 /// Case-insensitive "contains" in the user's locale (CurrentCultureIgnoreCase). Empty needle = true.

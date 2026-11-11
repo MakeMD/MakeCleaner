@@ -7,11 +7,10 @@ const ui = @import("tools_ui.zig");
 const custom = @import("../core/custom.zig");
 const rules_fs = @import("../core/rules_fs.zig");
 const common = @import("../core/common.zig");
+const T = @import("../i18n/tr.zig");
+const tr = T.tr;
 
 const im = kit.im;
-
-const include_modes = [_][*:0]const u8{ "Files only", "Files and subfolders", "Files, subfolders and the folder itself" };
-const exclude_kinds = [_][*:0]const u8{ "Folder", "File", "Registry key" };
 
 /// Status line of both pages (bold).
 fn drawStatus(st: *const ui.Text(400), ctx: *Ctx, id: []const u8) void {
@@ -70,26 +69,30 @@ pub const Include = struct {
 
     pub fn draw(p: *Include, ctx: *Ctx) void {
         const s = ui.scale();
-        ui.title(ctx, "Include");
-        ui.muted("Extra files and folders to clean. Folder or file, e.g. D:\\Logs.");
+        const t = &tr().include;
+        const c = &tr().common;
+        var lb: [128]u8 = undefined;
+        ui.title(ctx, tr().options.nav_include);
+        ui.muted(t.intro);
         im.ImGui_Dummy(.{ .x = 0, .y = 4 * s });
         _ = p.path.input("##incPath", 300 * s);
         im.ImGui_SameLineEx(0, 8 * s);
-        if (ui.button("Browse...##incPathBrowse", true)) ui.pickFolder(ctx, 1024, &p.path, false);
+        if (ui.button(ui.idLabel(&lb, c.browse, "incPathBrowse", .{}).ptr, true)) ui.pickFolder(ctx, 1024, &p.path, false);
         im.ImGui_SameLineEx(0, 8 * s);
-        if (ui.button("Add##incAdd", true)) p.add(ctx);
+        if (ui.button(ui.idLabel(&lb, c.add, "incAdd", .{}).ptr, true)) p.add(ctx);
         im.ImGui_SameLineEx(0, 8 * s);
-        if (ui.button("Remove##incRemove", true)) removeSelected(ctx, custom.include_prefix, &p.sel);
+        if (ui.button(ui.idLabel(&lb, c.remove, "incRemove", .{}).ptr, true)) removeSelected(ctx, custom.include_prefix, &p.sel);
 
-        ui.label("Mode:");
+        ui.label(t.mode);
         im.ImGui_SameLineEx(0, 8 * s);
+        const include_modes = [_][*:0]const u8{ t.files_only, t.files_sub, t.files_sub_self };
         _ = ui.combo("incMode", &include_modes, &p.mode, 230 * s);
         im.ImGui_SameLineEx(0, 8 * s);
-        ui.label("Mask:");
+        ui.label(t.mask);
         im.ImGui_SameLineEx(0, 8 * s);
         _ = p.pattern.input("##incPattern", 100 * s);
-        im.ImGui_SameLineEx(0, 8 * s);
-        ui.label("Hours old (0 = any):");
+        ui.sameLineOrWrap(ui.textW(t.hours) + 8 * s + 60 * s, 8 * s, 0); // label + box wrap together (es/fr are long)
+        ui.label(t.hours);
         im.ImGui_SameLineEx(0, 8 * s);
         _ = p.age.input("##incAge", 60 * s);
         im.ImGui_Dummy(.{ .x = 0, .y = 4 * s });
@@ -103,11 +106,12 @@ pub const Include = struct {
         defer arena_state.deinit();
         const a = arena_state.allocator();
         const raw = p.path.trimmed();
+        const t = &tr().include;
         if (custom.reject(a, raw) catch null) |why| return p.st.set("{s}", .{why});
         const hours = std.fmt.parseInt(i32, p.age.trimmed(), 10) catch -1;
-        if (hours < 0) return p.st.set("Hours must be a whole number, 0 = any age.", .{});
+        if (hours < 0) return p.st.set("{s}", .{t.hours_bad});
         const expanded = kit.win.expandEnv(a, raw) catch return;
-        const full = (rules_fs.fullPath(a, expanded) catch null) orelse return p.st.set("Folder or file not found.", .{});
+        const full = (rules_fs.fullPath(a, expanded) catch null) orelse return p.st.set("{s}", .{t.not_found});
         var entry: []const u8 = undefined;
         if (rules_fs.isFile(full)) {
             entry = a.print("{s}|{s}", .{ std.fs.path.dirname(full) orelse full, std.fs.path.basename(full) }) catch return;
@@ -119,7 +123,7 @@ pub const Include = struct {
                 else => "",
             };
             entry = a.print("{s}|{s}{s}", .{ full, if (mask.len > 0) mask else "*.*", suffix }) catch return;
-        } else return p.st.set("Folder or file not found.", .{});
+        } else return p.st.set("{s}", .{t.not_found});
         if (hours > 0) entry = a.print("{s}|OLDER={d}", .{ entry, hours }) catch return;
 
         // GetList().Append(entry).Distinct(OrdinalIgnoreCase)
@@ -135,7 +139,7 @@ pub const Include = struct {
         ctx.settings.setList(custom.include_prefix, list.items) catch return;
         ctx.settings.save(ctx.io) catch {};
         p.path.set("");
-        p.st.set("Added. Tick \"{s}\" in Cleaner > Windows to clean it.", .{custom.rule_name});
+        p.st.tset(t.added, .{tr().rule.custom});
     }
 };
 
@@ -149,18 +153,22 @@ pub const Exclude = struct {
 
     pub fn draw(p: *Exclude, ctx: *Ctx) void {
         const s = ui.scale();
-        ui.title(ctx, "Exclude");
-        ui.muted("Never clean these. Folder, file or registry key (HKCU\\Software\\Key[|Value]).");
+        const t = &tr().exclude;
+        const c = &tr().common;
+        var lb: [128]u8 = undefined;
+        ui.title(ctx, tr().options.nav_exclude);
+        ui.muted(t.intro);
         im.ImGui_Dummy(.{ .x = 0, .y = 4 * s });
         _ = p.path.input("##excPath", 170 * s);
         im.ImGui_SameLineEx(0, 8 * s);
+        const exclude_kinds = [_][*:0]const u8{ t.folder, t.file, t.reg_key };
         _ = ui.combo("excKind", &exclude_kinds, &p.kind, 130 * s);
         im.ImGui_SameLineEx(0, 8 * s);
-        if (ui.button("Browse...##excPathBrowse", true)) ui.pickFolder(ctx, 1024, &p.path, false);
+        if (ui.button(ui.idLabel(&lb, c.browse, "excPathBrowse", .{}).ptr, true)) ui.pickFolder(ctx, 1024, &p.path, false);
         im.ImGui_SameLineEx(0, 8 * s);
-        if (ui.button("Add##excAdd", true)) p.add(ctx);
+        if (ui.button(ui.idLabel(&lb, c.add, "excAdd", .{}).ptr, true)) p.add(ctx);
         im.ImGui_SameLineEx(0, 8 * s);
-        if (ui.button("Remove##excRemove", true)) removeSelected(ctx, custom.exclude_prefix, &p.sel);
+        if (ui.button(ui.idLabel(&lb, c.remove, "excRemove", .{}).ptr, true)) removeSelected(ctx, custom.exclude_prefix, &p.sel);
         im.ImGui_Dummy(.{ .x = 0, .y = 4 * s });
         listBox(ctx, "##excList", "exc", custom.exclude_prefix, &p.sel);
         im.ImGui_Dummy(.{ .x = 0, .y = 4 * s });
@@ -189,11 +197,11 @@ pub const Exclude = struct {
                 null,
         };
         const e = entry orelse {
-            if (p.kind == 2) p.st.set("Use a key like HKCU\\Software\\Key or HKCU\\Software\\Key|Value.", .{}) else p.st.set("Not found.", .{});
+            p.st.set("{s}", .{if (p.kind == 2) tr().exclude.reg_hint else tr().exclude.not_found});
             return;
         };
         custom.addExclude(ctx.gpa, ctx.io, ctx.settings, e) catch return;
         p.path.set("");
-        p.st.set("Added. Excluded items are skipped by every cleaner.", .{});
+        p.st.set("{s}", .{tr().exclude.added});
     }
 };

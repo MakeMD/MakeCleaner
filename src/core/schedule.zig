@@ -7,6 +7,8 @@ const common = @import("common.zig");
 const cleanpass = @import("cleanpass.zig");
 const sys = @import("systools_win.zig");
 const Settings = @import("settings.zig").Settings;
+const T = @import("../i18n/tr.zig");
+const tr = T.tr;
 
 const w = kit.w;
 const win = kit.win;
@@ -144,6 +146,10 @@ pub fn describe(gpa: Allocator, name: []const u8) !?[]u8 {
     try sys.check(t.*.lpVtbl.*.get_NextRunTime.?(t, &next));
     var st = std.mem.zeroes(w.SYSTEMTIME);
     _ = w.VariantTimeToSystemTime(next, &st); // 0 (no next run: logon trigger) = 1899-12-30
-    if (st.wYear <= 1900) return try gpa.dupe(u8, "Scheduled cleaning is on (runs at sign-in).");
-    return try gpa.print("Scheduled cleaning is on. Next run: {d:0>4}-{d:0>2}-{d:0>2} {d:0>2}:{d:0>2}", .{ st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute });
+    const txt = &tr().schedule;
+    if (st.wYear <= 1900) return try gpa.dupe(u8, txt.on_logon);
+    var db: [32]u8 = undefined;
+    const when = try std.mem.print(&db, "{d:0>4}-{d:0>2}-{d:0>2} {d:0>2}:{d:0>2}", .{ st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute });
+    var buf: [512]u8 = undefined;
+    return try gpa.dupe(u8, T.fmt(&buf, txt.on_next, .{when}));
 }

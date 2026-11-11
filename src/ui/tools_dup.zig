@@ -9,6 +9,8 @@ const duplicates = @import("../core/duplicates.zig");
 const engine = @import("../core/engine.zig");
 const bytes = @import("../core/bytes.zig");
 const FileInfo = @import("../core/common.zig").FileInfo;
+const T = @import("../i18n/tr.zig");
+const tr = T.tr;
 
 const im = kit.im;
 const max_groups = 2000;
@@ -110,7 +112,7 @@ pub const View = struct {
         };
         v.seen = 0;
         v.seen_at = kit.w.GetTickCount64();
-        v.status.set("Scanning...", .{});
+        v.status.set("{s}", .{tr().common.scanning});
         v.job.start(v, worker) catch {};
     }
 
@@ -150,7 +152,9 @@ pub const View = struct {
         v.checked.resize(gpa, v.rows.items.len) catch {};
         @memset(v.checked.items, false);
         v.sel = null;
-        v.status.set("Found {d} duplicate groups, {d} files, {f} reclaimable", .{ all.len, total_files, bytes.fmt(wasted) });
+        var b1: [96]u8 = undefined;
+        var b2: [64]u8 = undefined;
+        v.status.tset(tr().dupes.found, .{ T.n(&b1, tr().dupes.groups, all.len, all.len), T.n(&b2, tr().common.files, total_files, total_files), bytes.fmt(wasted) });
         v.results = true;
     }
 
@@ -175,7 +179,7 @@ pub const View = struct {
         v.del_files = v.picked(gpa);
         v.gone = gpa.alloc(bool, v.rows.items.len) catch return v.freeDelete(gpa);
         v.deleting = true;
-        v.status.set("Deleting {d} files...", .{v.del_files.len});
+        v.status.tset(kit.i18n.pick(tr().common.deleting_files, v.del_files.len), .{v.del_files.len});
         v.job.start(v, delWorker) catch {
             v.deleting = false;
             v.freeDelete(gpa);
@@ -219,7 +223,8 @@ pub const View = struct {
         v.rows.shrinkRetainingCapacity(m);
         v.checked.shrinkRetainingCapacity(m);
         v.sel = null;
-        v.status.set("Deleted {d} files, {f} freed, {d} skipped", .{ r.deleted, bytes.fmt(r.bytes_freed), r.skipped });
+        var fb: [64]u8 = undefined;
+        v.status.tset(tr().common.deleted, .{ T.n(&fb, tr().common.files, r.deleted, r.deleted), bytes.fmt(r.bytes_freed), r.skipped });
     }
 
     pub fn draw(v: *View, ctx: *Ctx) void {
@@ -230,9 +235,9 @@ pub const View = struct {
                 v.deleting = false;
                 v.deleted(ctx.gpa);
             } else if (v.job.cancelled()) {
-                v.status.set("Cancelled", .{});
+                v.status.set("{s}", .{tr().common.cancelled});
             } else if (v.job.errorText(&eb)) |e| {
-                v.status.set("Failed: {s}", .{e});
+                v.status.tset(tr().common.failed, .{e});
             } else v.show(ctx.gpa);
         }
         if (v.job.isRunning() and !v.deleting) {
@@ -241,7 +246,8 @@ pub const View = struct {
                 v.seen = v.job.done.load(.acquire);
                 v.seen_at = now;
                 var nb: [32]u8 = undefined;
-                v.status.set("Scanning... {s} files", .{ui.n0(&nb, v.seen)});
+                var fb: [64]u8 = undefined;
+                v.status.tset(tr().common.scanning_n, .{T.n(&fb, tr().common.files, v.seen, ui.n0(&nb, v.seen))});
             }
             ctx.app.requestFrames(2);
         }
@@ -265,61 +271,67 @@ pub const View = struct {
         if (im.ImGui_BeginChild("##dupForm", .{ .x = 0, .y = 0 }, im.ImGuiChildFlags_Borders | im.ImGuiChildFlags_AutoResizeY, 0)) { // as tall as the form, Search right under it
             const col2 = 110 * s;
             const busy = v.job.isRunning();
+            const d = &tr().dupes;
+            var lb: [128]u8 = undefined;
             im.ImGui_BeginDisabled(busy);
-            head("Match by", col2);
-            _ = kit.ui.checkbox("Name##byName", &v.by_name);
-            im.ImGui_SameLineEx(0, 18 * s);
-            _ = kit.ui.checkbox("Size##bySize", &v.by_size);
-            im.ImGui_SameLineEx(0, 18 * s);
-            _ = kit.ui.checkbox("Modified date##byDate", &v.by_date);
-            im.ImGui_SameLineEx(0, 18 * s);
-            _ = kit.ui.checkbox("Content##byContent", &v.by_content);
+            const wrap_x = im.ImGui_GetCursorPosX() + col2; // a checkbox that does not fit wraps under the first one
+            head(d.match_by, col2);
+            check(&lb, d.by_name, "byName", &v.by_name, null);
+            check(&lb, d.by_size, "bySize", &v.by_size, wrap_x);
+            check(&lb, d.by_date, "byDate", &v.by_date, wrap_x);
+            check(&lb, d.by_content, "byContent", &v.by_content, wrap_x);
 
-            head("Ignore", col2);
-            _ = kit.ui.checkbox("Zero-byte files##noEmpty", &v.no_empty);
-            im.ImGui_SameLineEx(0, 18 * s);
-            _ = kit.ui.checkbox("System files##noSystem", &v.no_system);
-            im.ImGui_SameLineEx(0, 18 * s);
-            _ = kit.ui.checkbox("Hidden files##noHidden", &v.no_hidden);
-            im.ImGui_SameLineEx(0, 18 * s);
-            _ = kit.ui.checkbox("Read-only files##noReadOnly", &v.no_read_only);
+            head(d.ignore, col2);
+            check(&lb, d.zero_byte, "noEmpty", &v.no_empty, null);
+            check(&lb, d.system, "noSystem", &v.no_system, wrap_x);
+            check(&lb, d.hidden, "noHidden", &v.no_hidden, wrap_x);
+            check(&lb, d.read_only, "noReadOnly", &v.no_read_only, wrap_x);
 
-            head("Size (MB)", col2);
-            ui.label("from");
+            head(d.size_mb, col2);
+            ui.label(d.from);
             im.ImGui_SameLine();
             _ = v.min_mb.input("##dupMinMb", 70 * s);
             im.ImGui_SameLineEx(0, 10 * s);
-            ui.label("to");
+            ui.label(d.to);
             im.ImGui_SameLine();
             _ = v.max_mb.input("##dupMaxMb", 70 * s);
             im.ImGui_SameLineEx(0, 10 * s);
             im.ImGui_AlignTextToFramePadding();
-            ui.muted("0 = no limit");
+            ui.muted(d.no_limit);
 
             const browse_w = 100 * s;
-            head("Search in", col2);
+            head(d.search_in, col2);
             _ = v.include.input("##dupInclude", im.ImGui_GetContentRegionAvail().x - browse_w - 8 * s);
             im.ImGui_SameLineEx(0, 8 * s);
-            if (im.ImGui_ButtonEx("Browse...##dupIncludeBrowse", .{ .x = browse_w, .y = 0 })) ui.pickFolder(ctx, 2048, &v.include, true);
+            if (im.ImGui_ButtonEx(ui.idLabel(&lb, tr().common.browse, "dupIncludeBrowse", .{}).ptr, .{ .x = browse_w, .y = 0 })) ui.pickFolder(ctx, 2048, &v.include, true);
 
-            head("Skip", col2);
+            head(d.skip, col2);
             _ = v.exclude.input("##dupExclude", im.ImGui_GetContentRegionAvail().x - browse_w - 8 * s);
             im.ImGui_SameLineEx(0, 8 * s);
-            if (im.ImGui_ButtonEx("Browse...##dupExcludeBrowse", .{ .x = browse_w, .y = 0 })) ui.pickFolder(ctx, 2048, &v.exclude, true);
+            if (im.ImGui_ButtonEx(ui.idLabel(&lb, tr().common.browse, "dupExcludeBrowse", .{}).ptr, .{ .x = browse_w, .y = 0 })) ui.pickFolder(ctx, 2048, &v.exclude, true);
             im.ImGui_EndDisabled();
 
             im.ImGui_Dummy(.{ .x = 0, .y = 10 * s });
-            ui.mutedWrapped("Several folders: separate them with ';'. Content compares the bytes of files that already share a size.", im.ImGui_GetContentRegionAvail().x);
+            ui.mutedWrapped(d.hint, im.ImGui_GetContentRegionAvail().x);
         }
         im.ImGui_EndChild();
         im.ImGui_PopStyleVarEx(2);
         im.ImGui_PopStyleColorEx(2);
 
-        const label: [*:0]const u8 = if (v.job.isRunning()) "Cancel##dupSearch" else "Search##dupSearch";
+        var sb: [128]u8 = undefined;
+        const label = ui.idLabel(&sb, if (v.job.isRunning()) tr().common.cancel else tr().dupes.search, "dupSearch", .{});
         im.ImGui_SetCursorPosX(im.ImGui_GetCursorPosX() + im.ImGui_GetContentRegionAvail().x - 90 * s);
-        if (ui.primary(label, true)) {
+        if (ui.primary(label.ptr, true)) {
             if (v.job.isRunning()) v.job.cancel() else v.search();
         }
+    }
+
+    /// A form checkbox "text##id"; `wrap_x` != null: after the previous one, on the same line if it fits.
+    fn check(lb: []u8, text: []const u8, comptime id: []const u8, val: *bool, wrap_x: ?f32) void {
+        const l = ui.idLabel(lb, text, id, .{});
+        if (wrap_x) |x| ui.sameLineOrWrap(ui.checkboxW(l), 18 * ui.scale(), x);
+        _ = kit.ui.checkbox(l.ptr, val);
+        kit.ui.checkboxTooltip(l.ptr, null); // still cut on a very narrow window: full text on hover
     }
 
     /// Bold row caption in the 110 px label column.
@@ -339,10 +351,11 @@ pub const View = struct {
         if (im.ImGui_BeginTableEx("##dupList", 5, ui.table_flags, .{ .x = avail.x - ui.colWidth(), .y = avail.y }, 0)) {
             im.ImGui_TableSetupScrollFreeze(0, 1);
             im.ImGui_TableSetupColumnEx("##chk", im.ImGuiTableColumnFlags_WidthFixed | im.ImGuiTableColumnFlags_NoResize, 26 * s, 0);
-            im.ImGui_TableSetupColumnEx("Name", 0, 160 * s, 0);
-            im.ImGui_TableSetupColumnEx("Size", im.ImGuiTableColumnFlags_WidthFixed, 72 * s, 0);
-            im.ImGui_TableSetupColumnEx("Modified", im.ImGuiTableColumnFlags_WidthFixed, 118 * s, 0);
-            im.ImGui_TableSetupColumnEx("Folder", 0, 420 * s, 0);
+            const c = &tr().common;
+            im.ImGui_TableSetupColumnEx(c.col_name, 0, 160 * s, 0);
+            im.ImGui_TableSetupColumnEx(c.col_size, im.ImGuiTableColumnFlags_WidthFixed, 72 * s, 0);
+            im.ImGui_TableSetupColumnEx(c.col_modified, im.ImGuiTableColumnFlags_WidthFixed, 118 * s, 0);
+            im.ImGui_TableSetupColumnEx(c.col_folder, 0, 420 * s, 0);
             im.ImGui_TableHeadersRow();
             var clip = std.mem.zeroes(im.ImGuiListClipper);
             im.ImGuiListClipper_Begin(&clip, @intCast(v.rows.items.len), -1);
@@ -356,13 +369,16 @@ pub const View = struct {
         im.ImGui_SameLineEx(0, 12 * s);
         im.ImGui_BeginGroup();
         const idle = !v.job.isRunning();
-        if (ui.colButton("Select all but first##dupSelect", idle)) v.selectAllButFirst();
-        if (ui.colButton("Delete Selected##dupDelete", idle)) {
+        const d = &tr().dupes;
+        var lb: [128]u8 = undefined;
+        if (ui.colButton(ui.idLabel(&lb, d.select_but_first, "dupSelect", .{}).ptr, idle)) v.selectAllButFirst();
+        if (ui.colButton(ui.idLabel(&lb, d.delete_selected, "dupDelete", .{}).ptr, idle)) {
             var n: usize = 0;
-            for (v.rows.items, v.checked.items) |r, c| n += @intFromBool(c and r.file != null);
-            if (n > 0) v.dlg.show(tag_delete, "Delete files", .danger, &.{ "Delete", "Cancel" }, "Delete {d} file(s)? This cannot be undone.", .{n});
+            for (v.rows.items, v.checked.items) |r, ck| n += @intFromBool(ck and r.file != null);
+            const c = &tr().common;
+            if (n > 0) v.dlg.showT(tag_delete, c.delete_files_title, .danger, &.{ c.delete, c.cancel }, kit.i18n.pick(c.delete_files_q, n), .{n});
         }
-        if (ui.colButton("Back##dupBack", idle)) v.results = false;
+        if (ui.colButton(ui.idLabel(&lb, d.back, "dupBack", .{}).ptr, idle)) v.results = false;
         im.ImGui_EndGroup();
     }
 

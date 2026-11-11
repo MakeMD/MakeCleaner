@@ -39,10 +39,12 @@ function Set-McIni {
     [IO.File]::WriteAllLines($Sb.Ini, $lines, (New-Object System.Text.UTF8Encoding($false)))
 }
 
-# Environment of every sandbox run: fixture TEMP/AppData, window on \\.\DISPLAY<Screen>.
+# Environment of every sandbox run: fixture TEMP/AppData, window on \\.\DISPLAY<Screen>, English UI
+# (MAKEKIT_LANG beats the Windows UI language and the saved Language= choice; the smokes compare English
+# labels and status texts). Pass -Env @{ MAKEKIT_LANG = 'uk' } to run a smoke in another language.
 function Get-McEnv {
     param([Parameter(Mandatory = $true)]$Sb, [int]$Screen = 1, [hashtable]$Env = @{})
-    $e = @{ TEMP = $Sb.Temp; TMP = $Sb.Temp; APPDATA = $Sb.Roaming; LOCALAPPDATA = $Sb.Local; MAKEKIT_DISPLAY = "\\.\DISPLAY$Screen" }
+    $e = @{ TEMP = $Sb.Temp; TMP = $Sb.Temp; APPDATA = $Sb.Roaming; LOCALAPPDATA = $Sb.Local; MAKEKIT_DISPLAY = "\\.\DISPLAY$Screen"; MAKEKIT_LANG = 'en' }
     foreach ($k in $Env.Keys) { $e[$k] = $Env[$k] }
     $e
 }

@@ -38,7 +38,7 @@ make(sys.argv[2], "moz_cookies", "host", [".example.com", ".spam.org"])
     $realBrowser = @(Get-Process chrome, firefox -ErrorAction SilentlyContinue).Count -gt 0
 
     $app = Start-McApp $sb -Screen $Screen
-    $null = Wait-AutoLabel $app '*applications detected##status'
+    $null = Wait-AutoLabel $app '*detected##status'
     Invoke-AutoClick $app 'Options'
     Invoke-AutoClick $app 'Cookies##optionsNav3'
     $scan = (Wait-AutoLabel $app '*domains with cookies*##cookieStatus').label

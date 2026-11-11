@@ -1100,12 +1100,12 @@ test "CleanPass.Clean status line: registry, other items, browser entries, free 
     try pass.analyze(io, list, &items, null, null);
     const analyzed = try pass.analyzeSummary(gpa);
     defer gpa.free(analyzed);
-    try testing.expectEqualStrings("Analysis complete: 1 files, 5 B to be removed, 1 registry entries, 1 other items, 5 browser entries + free space wipe", analyzed);
+    try testing.expectEqualStrings("Analysis complete: 1 file, 5 B to be removed, 1 registry entry, 1 other item, 5 browser entries + free space wipe", analyzed);
     try testing.expectEqual(0, elevated.Fake.calls); // analyze only describes
 
     const cleaned = try pass.clean(gpa, io, &.{"Busy Browser"}, null);
     defer gpa.free(cleaned);
-    try testing.expectEqualStrings("Cleaning complete: 1 files removed, 5 B freed, 0 skipped (in use), 1 registry entries removed, 0 skipped, 0 other items done (1 failed), 3 browser entries removed, skipped running: Busy Browser, free space wiped", cleaned);
+    try testing.expectEqualStrings("Cleaning complete: 1 file removed, 5 B freed, 0 skipped (in use), 1 registry entry removed, 0 skipped, 0 other items done (1 failed), 3 browser entries removed, skipped running: Busy Browser, free space wiped", cleaned);
     try testing.expectEqual(1, elevated.Fake.calls);
     try testing.expect(std.mem.find(u8, elevated.Fake.args(), "wevtutil") != null);
     try testing.expectEqual(1, rows.runs);
@@ -1119,7 +1119,7 @@ test "CleanPass.Clean status line: registry, other items, browser entries, free 
     try pass.analyze(io, list[2..], &.{}, null, null);
     const failed = try pass.clean(gpa, io, &.{}, null);
     defer gpa.free(failed);
-    try testing.expect(std.mem.startsWith(u8, failed, "Cleaning complete: 0 files removed, 0 B freed, 0 skipped (in use), 0 registry entries removed, 0 skipped, 1 other items done, free space wipe failed: "));
+    try testing.expect(std.mem.startsWith(u8, failed, "Cleaning complete: 0 files removed, 0 B freed, 0 skipped (in use), 0 registry entries removed, 0 skipped, 1 other item done, free space wipe failed: "));
 }
 
 test "CleanPass.Saved: ticked Windows + Applications rules, never Wipe Free Space; RunningBrowsers" {

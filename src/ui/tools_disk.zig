@@ -10,6 +10,8 @@ const disk = @import("../core/diskanalyzer.zig");
 const engine = @import("../core/engine.zig");
 const bytes = @import("../core/bytes.zig");
 const FileInfo = @import("../core/common.zig").FileInfo;
+const T = @import("../i18n/tr.zig");
+const tr = T.tr;
 
 const im = kit.im;
 const w = kit.w;
@@ -84,7 +86,7 @@ pub const View = struct {
         const text = a.dupe(u8, v.roots.slice()) catch return;
         v.where = duplicates.scan.splitPaths(a, text) catch return;
         v.seen_at = kit.w.GetTickCount64();
-        v.status.set("Scanning...", .{});
+        v.status.set("{s}", .{tr().common.scanning});
         v.job.start(v, worker) catch {};
     }
 
@@ -126,7 +128,7 @@ pub const View = struct {
         while (it.next()) |k| list.append(gpa, v.report.?.by_category[v.cat][k.*]) catch return list.deinit(gpa);
         v.del_files = list.toOwnedSlice(gpa) catch return list.deinit(gpa);
         v.deleting = true;
-        v.status.set("Deleting {d} files...", .{v.del_files.len});
+        v.status.tset(kit.i18n.pick(tr().common.deleting_files, v.del_files.len), .{v.del_files.len});
         v.job.start(v, delWorker) catch {
             v.deleting = false;
             gpa.free(v.del_files);
@@ -157,12 +159,13 @@ pub const View = struct {
             v.del_files = &.{};
         }
         var eb: [512]u8 = undefined;
-        if (v.job.errorText(&eb)) |e| return v.status.set("Failed: {s}", .{e});
+        if (v.job.errorText(&eb)) |e| return v.status.tset(tr().common.failed, .{e});
         v.report.?.by_category = v.del_lists;
         v.sumCats();
         v.showFiles(gpa);
         const r = v.del_result;
-        v.status.set("Deleted {d} files, {f} freed, {d} skipped", .{ r.deleted, bytes.fmt(r.bytes_freed), r.skipped });
+        var fb: [64]u8 = undefined;
+        v.status.tset(tr().common.deleted, .{ T.n(&fb, tr().common.files, r.deleted, r.deleted), bytes.fmt(r.bytes_freed), r.skipped });
     }
 
     fn sumCats(v: *View) void {
@@ -190,9 +193,9 @@ pub const View = struct {
                 v.deleting = false;
                 v.deleted(ctx.gpa);
             } else if (v.job.cancelled()) {
-                v.status.set("Cancelled", .{});
+                v.status.set("{s}", .{tr().common.cancelled});
             } else if (v.job.errorText(&eb)) |e| {
-                v.status.set("Failed: {s}", .{e});
+                v.status.tset(tr().common.failed, .{e});
             } else {
                 std.mem.swap(std.heap.ArenaAllocator, &v.arena, &v.next_arena);
                 _ = v.next_arena.reset(.free_all);
@@ -201,7 +204,9 @@ pub const View = struct {
                 v.sumCats();
                 v.showFiles(ctx.gpa);
                 var nb: [32]u8 = undefined;
-                v.status.set("Analysis complete: {s} files, {f}", .{ ui.n0(&nb, fileCount(&v.report.?)), bytes.fmt(v.report.?.total()) });
+                var fb: [64]u8 = undefined;
+                const n = fileCount(&v.report.?);
+                v.status.tset(tr().disk.analysis_complete, .{ T.n(&fb, tr().common.files, n, ui.n0(&nb, n)), bytes.fmt(v.report.?.total()) });
             }
         }
         if (v.job.isRunning() and !v.deleting) {
@@ -209,7 +214,9 @@ pub const View = struct {
             if (now -% v.seen_at >= 200) {
                 v.seen_at = now;
                 var nb: [32]u8 = undefined;
-                v.status.set("Scanning... {s} files", .{ui.n0(&nb, v.job.done.load(.acquire))});
+                var fb: [64]u8 = undefined;
+                const n = v.job.done.load(.acquire);
+                v.status.tset(tr().common.scanning_n, .{T.n(&fb, tr().common.files, n, ui.n0(&nb, n))});
             }
             ctx.app.requestFrames(2);
         }
@@ -218,18 +225,20 @@ pub const View = struct {
         // where to look
         const busy = v.job.isRunning();
         const scanning = busy and !v.deleting;
+        const d = &tr().disk;
+        var lb: [128]u8 = undefined;
         im.ImGui_PushFontFloat(ctx.app.fonts.bold, 0);
-        ui.label("Locations");
+        ui.label(d.locations);
         im.ImGui_PopFont();
         im.ImGui_SameLineEx(0, 10 * s);
         const right = 100 * s + 8 * s + 90 * s + 8 * s;
         im.ImGui_BeginDisabled(busy);
         _ = v.roots.input("##daRoots", im.ImGui_GetContentRegionAvail().x - right);
         im.ImGui_SameLineEx(0, 8 * s);
-        if (im.ImGui_ButtonEx("Browse...##daBrowse", .{ .x = 100 * s, .y = 0 })) ui.pickFolder(ctx, 1024, &v.roots, true);
+        if (im.ImGui_ButtonEx(ui.idLabel(&lb, tr().common.browse, "daBrowse", .{}).ptr, .{ .x = 100 * s, .y = 0 })) ui.pickFolder(ctx, 1024, &v.roots, true);
         im.ImGui_EndDisabled();
         im.ImGui_SameLineEx(0, 8 * s);
-        if (ui.primary(if (scanning) "Cancel##daScan" else "Analyze##daScan", !v.deleting)) {
+        if (ui.primary(ui.idLabel(&lb, if (scanning) tr().common.cancel else d.analyze, "daScan", .{}).ptr, !v.deleting)) {
             if (scanning) v.job.cancel() else v.analyze();
         }
         im.ImGui_Dummy(.{ .x = 0, .y = 6 * s });
@@ -245,16 +254,18 @@ pub const View = struct {
         const has = v.report != null and !busy;
         const bw = 120 * s + 140 * s + 120 * s + 16 * s;
         im.ImGui_SetCursorPosX(im.ImGui_GetCursorPosX() + @max(0, im.ImGui_GetContentRegionAvail().x - bw));
-        if (im.ImGui_ButtonEx("Open Folder##daOpen", .{ .x = 120 * s, .y = 0 })) v.openSelected(ctx.gpa);
+        if (im.ImGui_ButtonEx(ui.idLabel(&lb, d.open_folder, "daOpen", .{}).ptr, .{ .x = 120 * s, .y = 0 })) v.openSelected(ctx.gpa);
         im.ImGui_SameLineEx(0, 8 * s);
         im.ImGui_BeginDisabled(busy);
-        const del = im.ImGui_ButtonEx("Delete Selected##daDelete", .{ .x = 140 * s, .y = 0 });
+        const del = im.ImGui_ButtonEx(ui.idLabel(&lb, d.delete_selected, "daDelete", .{}).ptr, .{ .x = 140 * s, .y = 0 });
         im.ImGui_EndDisabled();
         if (del) {
-            if (has and v.picked.count() > 0) v.dlg.show(tag_delete, "Delete files", .danger, &.{ "Delete", "Cancel" }, "Delete {d} file(s)? This cannot be undone.", .{v.picked.count()});
+            const c = &tr().common;
+            const n = v.picked.count();
+            if (has and n > 0) v.dlg.showT(tag_delete, c.delete_files_title, .danger, &.{ c.delete, c.cancel }, kit.i18n.pick(c.delete_files_q, n), .{n});
         }
         im.ImGui_SameLineEx(0, 8 * s);
-        if (im.ImGui_ButtonEx("Save Report...##daSave", .{ .x = 120 * s, .y = 0 })) v.saveReport(ctx);
+        if (im.ImGui_ButtonEx(ui.idLabel(&lb, d.save_report, "daSave", .{}).ptr, .{ .x = 120 * s, .y = 0 })) v.saveReport(ctx);
         im.ImGui_EndGroup();
 
         ui.status("daStatus", v.status.slice(), ui.pal.text);
@@ -283,24 +294,27 @@ pub const View = struct {
                     var db: [96]u8 = undefined;
                     var nb: [32]u8 = undefined;
                     const size = ui.z(&sb, "{f}", .{bytes.fmt(b)});
-                    const n = ui.n0(&nb, r.by_category[i].len);
+                    var fb: [64]u8 = undefined;
+                    const count = r.by_category[i].len;
+                    const n = T.n(&fb, tr().common.files, count, ui.n0(&nb, count));
                     const detail = if (total == 0)
-                        ui.z(&db, "{s} files", .{n})
+                        T.fmt(&db, "{0}", .{n})
                     else
-                        ui.z(&db, "{s} files  \u{00B7}  {s}%", .{ n, ui.fmt01(&pb, 100 * @as(f64, @floatFromInt(b)) / @as(f64, @floatFromInt(total))) });
+                        T.fmt(&db, tr().disk.cat_detail, .{ n, ui.fmt01(&pb, 100 * @as(f64, @floatFromInt(b)) / @as(f64, @floatFromInt(total))) });
+                    const name = T.show("disk_cat", c);
                     const pos = im.ImGui_GetCursorScreenPos();
                     const width = im.ImGui_GetContentRegionAvail().x;
                     // the label carries what is drawn: "Pictures  48.83 KB  1 files  33.3%###daCat0" (stable id)
                     var lb: [192]u8 = undefined;
                     im.ImGui_PushStyleColorImVec4(im.ImGuiCol_Text, kit.app.color(0, 0));
-                    if (im.ImGui_SelectableEx(ui.z(&lb, "{s}  {s}  {s}###daCat{d}", .{ c, size, detail, i }).ptr, v.cat == i, 0, .{ .x = width, .y = item_h })) {
+                    if (im.ImGui_SelectableEx(ui.z(&lb, "{s}  {s}  {s}###daCat{d}", .{ name, size, detail, i }).ptr, v.cat == i, 0, .{ .x = width, .y = item_h })) {
                         v.cat = i;
                         v.showFiles(ctx.gpa);
                     }
                     im.ImGui_PopStyleColor();
                     const x = pos.x + 4 * s;
                     var y = pos.y + 4 * s;
-                    im.ImDrawList_AddTextImFontPtr(dl, ctx.app.fonts.bold, line_h, .{ .x = x, .y = y }, kit.app.colorU32(ui.pal.text), c.ptr);
+                    im.ImDrawList_AddTextImFontPtr(dl, ctx.app.fonts.bold, line_h, .{ .x = x, .y = y }, kit.app.colorU32(ui.pal.text), name.ptr); // literal or tr() string: NUL-terminated
                     const sw = im.ImGui_CalcTextSize(size.ptr).x;
                     im.ImDrawList_AddText(dl, .{ .x = pos.x + width - sw - 4 * s, .y = y }, kit.app.colorU32(ui.pal.muted), size.ptr);
                     y += line_h + 5 * s;
@@ -311,7 +325,7 @@ pub const View = struct {
                     y += 13 * s;
                     im.ImDrawList_AddTextImFontPtr(dl, im.ImGui_GetFont(), 11 * s, .{ .x = x, .y = y }, kit.app.colorU32(ui.pal.muted), detail.ptr);
                 }
-            } else ui.mutedWrapped("Pick a drive or folder and press Analyze to see what takes the space.", im.ImGui_GetContentRegionAvail().x);
+            } else ui.mutedWrapped(tr().disk.hint, im.ImGui_GetContentRegionAvail().x);
         }
         im.ImGui_EndChild();
     }
@@ -321,10 +335,11 @@ pub const View = struct {
         if (!im.ImGui_BeginTableEx("##daFiles", 4, ui.table_flags | im.ImGuiTableFlags_RowBg, .{ .x = im.ImGui_GetContentRegionAvail().x, .y = h }, 0)) return;
         defer im.ImGui_EndTable();
         im.ImGui_TableSetupScrollFreeze(0, 1);
-        im.ImGui_TableSetupColumnEx("Name", 0, 170 * s, 0);
-        im.ImGui_TableSetupColumnEx("Size", im.ImGuiTableColumnFlags_WidthFixed, 72 * s, 0);
-        im.ImGui_TableSetupColumnEx("Modified", im.ImGuiTableColumnFlags_WidthFixed, 118 * s, 0);
-        im.ImGui_TableSetupColumnEx("Folder", 0, 420 * s, 0);
+        const cm = &tr().common;
+        im.ImGui_TableSetupColumnEx(cm.col_name, 0, 170 * s, 0);
+        im.ImGui_TableSetupColumnEx(cm.col_size, im.ImGuiTableColumnFlags_WidthFixed, 72 * s, 0);
+        im.ImGui_TableSetupColumnEx(cm.col_modified, im.ImGuiTableColumnFlags_WidthFixed, 118 * s, 0);
+        im.ImGui_TableSetupColumnEx(cm.col_folder, 0, 420 * s, 0);
         im.ImGui_TableHeadersRow();
         const io = im.ImGui_GetIO();
         var clip = std.mem.zeroes(im.ImGuiListClipper);

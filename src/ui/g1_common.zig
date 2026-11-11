@@ -4,6 +4,7 @@ const std = @import("std");
 const kit = @import("kit");
 const settings_mod = @import("../core/settings.zig");
 const ui = @import("tools_ui.zig");
+const T = @import("../i18n/tr.zig");
 
 const im = kit.im;
 const pal = kit.app.palettes.carbon;
@@ -112,7 +113,7 @@ pub fn boldFont() ?*im.ImFont {
 /// "{done*100/total}% ({done} of {total})", "" when total == 0 (CleanerView's progressText).
 pub fn pctText(buf: []u8, done: u64, total: u64) []const u8 {
     if (total == 0) return "";
-    return std.mem.print(buf, "{d}% ({d} of {d})", .{ @min(done, total) * 100 / total, done, total }) catch "";
+    return T.fmt(buf, T.tr().common.pct, .{ @min(done, total) * 100 / total, done, total });
 }
 
 /// Copy of `s` for a worker thread (Settings is not thread-safe; the UI keeps writing the original).

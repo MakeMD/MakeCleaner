@@ -15,10 +15,6 @@ const views = .{
     @import("tools_wiper.zig").View,
     @import("tools_restore.zig").View,
 };
-const titles = [_]ui.NavItem{
-    .{ "Uninstall", .uninstall },     .{ "Startup", .startup },    .{ "Duplicate Finder", .duplicates },
-    .{ "Disk Analyzer", .disk_analyzer }, .{ "Drive Wiper", .wipe }, .{ "System Restore", .restore },
-};
 
 pub const Page = struct {
     sel: usize = 0,
@@ -35,6 +31,11 @@ pub const Page = struct {
 
     pub fn draw(self: *Page, ctx: *Ctx) void {
         const avail = im.ImGui_GetContentRegionAvail();
+        const t = &@import("../i18n/tr.zig").tr().tools;
+        const titles = [_]ui.NavItem{
+            .{ t.nav_uninstall, .uninstall }, .{ t.nav_startup, .startup }, .{ t.nav_dupes, .duplicates },
+            .{ t.nav_disk, .disk_analyzer },  .{ t.nav_wiper, .wipe },      .{ t.nav_restore, .restore },
+        };
         ui.subNav("tools", &titles, &self.sel, avail.y);
         im.ImGui_SameLineEx(0, 16 * ui.scale());
         if (im.ImGui_BeginChild("##toolsHost", .{ .x = 0, .y = avail.y }, 0, im.ImGuiWindowFlags_NoBackground)) {

@@ -16,6 +16,7 @@ const ui_options = @import("ui/options.zig");
 const im = kit.im;
 const App = kit.app.App;
 const pal = kit.app.palettes.carbon;
+const tr = @import("i18n/tr.zig").tr;
 
 pub fn main(init: std.process.Init) !u8 {
     const gpa = init.gpa;
@@ -29,6 +30,8 @@ pub fn main(init: std.process.Init) !u8 {
     const args = try init.minimal.args.toSlice(arena);
     if (has(args[1..], "/auto")) return schedule.auto(gpa, io, &settings, exe_dir, has(args[1..], "/shutdown"));
 
+    // GUI only: /auto above never applies a language, so its log stays English (tr() starts as .en).
+    kit.i18n.apply(kit.i18n.Lang.parse(settings.get(ui_options.language_key, "auto")));
     const app = try App.init(gpa, .{ .title = "MakeCleaner", .size = .{ 1000, 680 }, .min_size = .{ 820, 560 }, .palette = pal, .icon_id = 1 });
     defer app.deinit();
     var state: State = .{ .ctx = .{ .gpa = gpa, .io = io, .app = app, .settings = &settings, .exe_dir = exe_dir } };
@@ -51,12 +54,12 @@ fn has(args: []const []const u8, flag: []const u8) bool {
 
 const Page = enum { cleaner, registry, tools, options };
 
-/// Rail tiles: kit icon + label (= automation label).
-const tiles = [_]struct { page: Page, icon: kit.icons.Name, label: [:0]const u8 }{
-    .{ .page = .cleaner, .icon = .cleaner, .label = "Cleaner" },
-    .{ .page = .registry, .icon = .registry, .label = "Registry" },
-    .{ .page = .tools, .icon = .tools, .label = "Tools" },
-    .{ .page = .options, .icon = .options, .label = "Options" },
+/// Rail tiles: kit icon + the field of tr().main holding the label (= automation label, "Cleaner" in English).
+const tiles = [_]struct { page: Page, icon: kit.icons.Name, label: []const u8 }{
+    .{ .page = .cleaner, .icon = .cleaner, .label = "rail_cleaner" },
+    .{ .page = .registry, .icon = .registry, .label = "rail_registry" },
+    .{ .page = .tools, .icon = .tools, .label = "rail_tools" },
+    .{ .page = .options, .icon = .options, .label = "rail_options" },
 };
 
 const State = struct {
@@ -104,10 +107,11 @@ fn frame(app: *App) void {
     text(dl, app.fonts.bold, 11 * sc, cx, logo.y + 38 * sc, .top, pal.text, "MakeCleaner");
 
     var y = pos.y + 84 * sc;
-    for (tiles) |t| {
+    inline for (tiles) |t| {
+        const label = @field(tr().main, t.label);
         const tile_h = 70 * sc;
         im.ImGui_SetCursorScreenPos(.{ .x = pos.x, .y = y });
-        if (im.ImGui_InvisibleButton(t.label.ptr, .{ .x = rail_w, .y = tile_h }, 0)) s.page = t.page;
+        if (im.ImGui_InvisibleButton(label.ptr, .{ .x = rail_w, .y = tile_h }, 0)) s.page = t.page;
         const selected = s.page == t.page;
         const max: im.ImVec2 = .{ .x = pos.x + rail_w, .y = y + tile_h };
         if (selected) {
@@ -122,7 +126,7 @@ fn frame(app: *App) void {
             const iy = @round(y + 10 * sc);
             im.ImDrawList_AddImage(dl, tex, .{ .x = ix, .y = iy }, .{ .x = ix + px, .y = iy + px });
         }
-        text(dl, app.fonts.regular, 12 * sc, cx, y + 42 * sc, .top, if (selected) pal.text else pal.rail_text, t.label);
+        text(dl, app.fonts.regular, 12 * sc, cx, y + 42 * sc, .top, if (selected) pal.text else pal.rail_text, label);
         y += tile_h;
     }
 
@@ -142,12 +146,15 @@ fn frame(app: *App) void {
     const top = pos.y + body_h;
     im.ImDrawList_AddRectFilled(dl, .{ .x = pos.x, .y = top }, .{ .x = pos.x + size.x, .y = pos.y + size.y }, kit.app.colorU32(pal.surface));
     im.ImDrawList_AddLine(dl, .{ .x = pos.x, .y = top }, .{ .x = pos.x + size.x, .y = top }, kit.app.colorU32(pal.line));
-    const footer = "MakeCleaner " ++ ctx_mod.version ++ "  \u{00B7}  no telemetry, no ads, no network access";
-    im.ImDrawList_AddTextImFontPtr(dl, app.fonts.regular, 12 * sc, .{ .x = pos.x + 12 * sc, .y = top + 6 * sc }, kit.app.colorU32(pal.muted), footer);
+    const m = &tr().main;
+    var fb: [256]u8 = undefined;
+    const footer = kit.i18n.fmt(&fb, m.footer, .{ctx_mod.version});
+    im.ImDrawList_AddTextImFontPtr(dl, app.fonts.regular, 12 * sc, .{ .x = pos.x + 12 * sc, .y = top + 6 * sc }, kit.app.colorU32(pal.muted), footer.ptr);
     // About link on the right -> themed info dialog
-    const about_w = im.ImGui_CalcTextSize("About").x;
+    const about_w = im.ImGui_CalcTextSize(m.about_link.ptr).x;
     im.ImGui_SetCursorScreenPos(.{ .x = pos.x + size.x - about_w - 12 * sc, .y = top + 4 * sc });
-    if (im.ImGui_TextLink("About##about")) s.about.info(0, "About MakeCleaner", "{s}", .{ctx_mod.about_text});
+    var ab: [96]u8 = undefined;
+    if (im.ImGui_TextLink(kit.i18n.fmt(&ab, "{0}##about", .{m.about_link}).ptr)) s.about.info(0, m.about_title, m.about_text, .{ctx_mod.version});
     _ = s.about.draw();
 }
 

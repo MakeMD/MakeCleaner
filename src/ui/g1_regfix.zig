@@ -7,6 +7,8 @@ const kit = @import("kit");
 const g = @import("g1_common.zig");
 const ui = @import("tools_ui.zig");
 const regcleaner = @import("../core/regcleaner.zig");
+const T = @import("../i18n/tr.zig");
+const tr = T.tr;
 
 const im = kit.im;
 const pal = kit.app.palettes.carbon;
@@ -14,7 +16,10 @@ const Allocator = std.mem.Allocator;
 const Job = kit.jobs.Job;
 const RegIssue = regcleaner.RegIssue;
 
-const title = "Fix registry issues###regfixdlg";
+/// "<translated title>###regfixdlg": the popup id stays the same in every language.
+fn title(buf: []u8) [:0]const u8 {
+    return T.fmt(buf, "{0}###regfixdlg", .{tr().regfix.title});
+}
 
 pub const Fix = struct {
     gpa: Allocator,
@@ -74,8 +79,9 @@ pub const Fix = struct {
     pub fn draw(f: *Fix) bool {
         if (!f.open) return false;
         const s = ui.scale();
+        var tb: [128]u8 = undefined;
         if (f.want_open) {
-            _ = im.ImGui_OpenPopup(title, 0);
+            _ = im.ImGui_OpenPopup(title(&tb).ptr, 0);
             f.want_open = false;
         }
         if (f.job.takeFinished()) f.finishApply();
@@ -87,7 +93,7 @@ pub const Fix = struct {
         im.ImGui_PushStyleColorImVec4(im.ImGuiCol_PopupBg, ui.col(pal.bg));
         im.ImGui_PushStyleVarImVec2(im.ImGuiStyleVar_WindowPadding, .{ .x = 18 * s, .y = 18 * s });
         var keep = true;
-        const visible = im.ImGui_BeginPopupModal(title, if (busy) null else &keep, im.ImGuiWindowFlags_AlwaysAutoResize | im.ImGuiWindowFlags_NoSavedSettings);
+        const visible = im.ImGui_BeginPopupModal(title(&tb).ptr, if (busy) null else &keep, im.ImGuiWindowFlags_AlwaysAutoResize | im.ImGuiWindowFlags_NoSavedSettings);
         im.ImGui_PopStyleVar();
         im.ImGui_PopStyleColor();
         if (!visible) {
@@ -103,9 +109,10 @@ pub const Fix = struct {
         const nav = n > 1 and !busy;
         if (g.buttonMin("<<##regprev", nav, false, 50)) f.show(f.at + n - 1);
         im.ImGui_SameLineEx(0, 12 * s);
-        var cbuf: [160]u8 = undefined;
-        const mark: []const u8 = if (busy) "  -  fixing..." else if (f.fixed[f.at]) "  -  fixed" else if (f.failed[f.at]) "  -  not fixed (administrator rights declined?)" else "";
-        const counter: []const u8 = std.mem.print(&cbuf, "Issue {d} of {d}{s}", .{ f.at + 1, n, mark }) catch "";
+        const t = &tr().regfix;
+        var cbuf: [256]u8 = undefined;
+        const mark: []const u8 = if (busy) t.mark_fixing else if (f.fixed[f.at]) t.mark_fixed else if (f.failed[f.at]) t.mark_not_fixed else "";
+        const counter = T.fmt(&cbuf, t.counter, .{ f.at + 1, n, mark });
         const cy = im.ImGui_GetCursorPosY();
         im.ImGui_SetCursorPosY(cy + (g.buttonHeight() - im.ImGui_GetFontSize()) / 2);
         im.ImGui_PushFontFloat(g.boldFont(), 0);
@@ -120,27 +127,31 @@ pub const Fix = struct {
         im.ImGui_Dummy(.{ .x = 0, .y = 6 * s });
         var dbuf: [3000]u8 = undefined;
         const target = x.target(f.gpa) catch null;
-        defer if (target) |t| f.gpa.free(t);
-        const details: []const u8 = std.mem.print(&dbuf, "Problem: {s}\nData: {s}\nRegistry key: {s}\n\nSolution: delete the registry {s}.", .{
-            x.problem, x.data, target orelse x.key_path, if (x.value_name == null) "key" else "value",
-        }) catch "";
+        defer if (target) |tg| f.gpa.free(tg);
+        const details = T.fmt(&dbuf, t.details, .{
+            T.show("reg_problem", x.problem), x.data, target orelse x.key_path, if (x.value_name == null) t.solution_key else t.solution_value,
+        });
         kit.ui.text("regdetails", details, pal.text, im.ImGui_GetContentRegionAvail().x);
         im.ImGui_Dummy(.{ .x = 0, .y = 6 * s });
 
         // Fix Issue / Fix All Selected / Close
-        const w = g.buttonWidth("Fix Issue##regfixone") + g.buttonWidth("Fix All Selected##regfixall") + g.buttonWidth("Close##regclose") + 16 * s;
+        var b1: [128]u8 = undefined;
+        var b2: [128]u8 = undefined;
+        var b3: [128]u8 = undefined;
+        const one = ui.idLabel(&b1, t.fix_one, "regfixone", .{});
+        const all = ui.idLabel(&b2, t.fix_all, "regfixall", .{});
+        const close_lbl = ui.idLabel(&b3, t.close, "regclose", .{});
+        const w = g.buttonWidth(one.ptr) + g.buttonWidth(all.ptr) + g.buttonWidth(close_lbl.ptr) + 16 * s;
         g.alignRight(w);
-        if (g.button("Fix Issue##regfixone", !busy and !f.fixed[f.at], false)) f.startApply(false);
+        if (g.button(one.ptr, !busy and !f.fixed[f.at], false)) f.startApply(false);
         im.ImGui_SameLineEx(0, 8 * s);
-        if (g.button("Fix All Selected##regfixall", !busy and f.anyLeft(), true)) {
+        if (g.button(all.ptr, !busy and f.anyLeft(), true)) {
             var left: usize = 0;
             for (f.fixed) |d| left += @intFromBool(!d);
-            var mbuf: [160]u8 = undefined;
-            const msg: []const u8 = std.mem.print(&mbuf, "Fix all {d} remaining issues? The backup you just saved can undo this.", .{left}) catch "Fix all remaining issues?";
-            f.confirm.show(0, "Fix All Selected", .danger, &.{ "Fix all", "Cancel" }, "{s}", .{msg});
+            f.confirm.showT(0, t.fix_all, .danger, &.{ t.fix_all_btn, tr().common.cancel }, kit.i18n.pick(t.fix_all_q, left), .{left});
         }
         im.ImGui_SameLineEx(0, 8 * s);
-        if (g.button("Close##regclose", !busy, false)) return f.close(true);
+        if (g.button(close_lbl.ptr, !busy, false)) return f.close(true);
 
         if (f.confirm.draw()) |a| if (a.button == 0) f.startApply(true);
         return false;

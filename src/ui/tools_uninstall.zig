@@ -6,6 +6,8 @@ const Ctx = @import("ctx.zig").Ctx;
 const ui = @import("tools_ui.zig");
 const uninstall = @import("../core/uninstall.zig");
 const bytes = @import("../core/bytes.zig");
+const T = @import("../i18n/tr.zig");
+const tr = T.tr;
 
 const im = kit.im;
 const InstalledApp = uninstall.InstalledApp;
@@ -91,7 +93,7 @@ pub const View = struct {
             else => a.changeCommand(ctx.gpa),
         } catch null) orelse return;
         defer ctx.gpa.free(cmd);
-        uninstall.launch(ctx.gpa, cmd) catch |e| v.dlg.info(tag_info, a.name, "{f}", .{kit.win.errText(e)});
+        uninstall.launch(ctx.gpa, cmd) catch |e| v.dlg.info(tag_info, a.name, "{0}", .{kit.win.errText(e)});
     }
 
     fn save(v: *View, ctx: *Ctx) void {
@@ -99,7 +101,8 @@ pub const View = struct {
         defer arena.deinit();
         const a = arena.allocator();
         var lines: std.ArrayList([]const u8) = .empty;
-        lines.append(a, "Program\tPublisher\tInstalled On\tSize\tVersion") catch return;
+        const u = &tr().uninstall;
+        lines.append(a, a.print("{s}\t{s}\t{s}\t{s}\t{s}", .{ u.col_program, u.col_publisher, u.col_installed, tr().common.col_size, u.col_version }) catch return) catch return;
         for (v.shown.items) |i| {
             const app = &v.apps[i];
             var db: [64]u8 = undefined;
@@ -127,7 +130,7 @@ pub const View = struct {
         if (v.dlg.draw()) |ans| if (ans.tag == tag_delete and ans.button == 0) {
             if (v.selected()) |a| {
                 const ok = uninstall.deleteEntry(ctx.gpa, a) catch false;
-                if (!ok) v.dlg.info(tag_info, "Delete entry", "The entry was not deleted.", .{});
+                if (!ok) v.dlg.info(tag_info, tr().uninstall.delete_entry, tr().uninstall.not_deleted, .{});
                 v.reload();
             }
         };
@@ -136,11 +139,12 @@ pub const View = struct {
         const list_w = avail.x - ui.colWidth();
         if (im.ImGui_BeginChild("##uninstallMain", .{ .x = list_w, .y = avail.y }, 0, im.ImGuiWindowFlags_NoBackground)) {
             // search row: "Search" [box] count
-            ui.label("Search");
+            ui.label(tr().uninstall.search);
             im.ImGui_SameLine();
             var cb: [96]u8 = undefined;
-            var eb: [512]u8 = undefined;
-            const count: []const u8 = if (v.err) |e| std.mem.print(&eb, "Error: {s}", .{e}) catch "Error" else if (v.job.isRunning() and v.apps.len == 0) "Loading..." else std.mem.print(&cb, "{d} programs", .{v.shown.items.len}) catch "";
+            var eb: [600]u8 = undefined;
+            const n = v.shown.items.len;
+            const count: []const u8 = if (v.err) |e| T.fmt(&eb, tr().common.err, .{e}) else if (v.job.isRunning() and v.apps.len == 0) tr().common.loading else T.n(&cb, tr().uninstall.programs, n, n);
             const count_w = @max(110 * s, im.ImGui_CalcTextSizeEx(count.ptr, count.ptr + count.len, false, -1).x) + 12 * s;
             if (v.search.input("##uninstallSearch", im.ImGui_GetContentRegionAvail().x - count_w)) v.fill(ctx.gpa);
             im.ImGui_SameLineEx(0, 12 * s);
@@ -153,14 +157,16 @@ pub const View = struct {
         im.ImGui_SameLineEx(0, 12 * s);
         im.ImGui_BeginGroup();
         const has = v.sel != null;
-        if (ui.colButton("Run Uninstaller##uninstallRun", v.can[0])) v.run(ctx, 0);
-        if (ui.colButton("Repair##uninstallRepair", v.can[1])) v.run(ctx, 1);
-        if (ui.colButton("Change##uninstallChange", v.can[2])) v.run(ctx, 2);
-        if (ui.colButton("Delete entry##uninstallDelete", has)) if (v.selected()) |a|
-            v.dlg.confirm(tag_delete, "Delete entry", "Remove \"{s}\" from the list?\nOnly the registry entry is deleted, the program files stay.", .{a.name});
+        const u = &tr().uninstall;
+        var lb: [128]u8 = undefined;
+        if (ui.colButton(ui.idLabel(&lb, u.run, "uninstallRun", .{}).ptr, v.can[0])) v.run(ctx, 0);
+        if (ui.colButton(ui.idLabel(&lb, u.repair, "uninstallRepair", .{}).ptr, v.can[1])) v.run(ctx, 1);
+        if (ui.colButton(ui.idLabel(&lb, u.change, "uninstallChange", .{}).ptr, v.can[2])) v.run(ctx, 2);
+        if (ui.colButton(ui.idLabel(&lb, u.delete_entry, "uninstallDelete", .{}).ptr, has)) if (v.selected()) |a|
+            v.dlg.confirm(tag_delete, u.delete_entry, u.delete_entry_q, .{a.name});
         im.ImGui_Dummy(.{ .x = 0, .y = 8 * s });
-        if (ui.colButton("Refresh##uninstallRefresh", !v.job.isRunning())) v.reload();
-        if (ui.colButton("Save to text file##uninstallSave", true)) v.save(ctx);
+        if (ui.colButton(ui.idLabel(&lb, tr().common.refresh, "uninstallRefresh", .{}).ptr, !v.job.isRunning())) v.reload();
+        if (ui.colButton(ui.idLabel(&lb, tr().common.save_text, "uninstallSave", .{}).ptr, true)) v.save(ctx);
         im.ImGui_EndGroup();
     }
 
@@ -169,11 +175,12 @@ pub const View = struct {
         defer im.ImGui_EndTable();
         const s = ui.scale();
         im.ImGui_TableSetupScrollFreeze(0, 1);
-        im.ImGui_TableSetupColumnEx("Program", 0, 300 * s, 0);
-        im.ImGui_TableSetupColumnEx("Publisher", 0, 190 * s, 0);
-        im.ImGui_TableSetupColumnEx("Installed On", im.ImGuiTableColumnFlags_WidthFixed, 82 * s, 0);
-        im.ImGui_TableSetupColumnEx("Size", im.ImGuiTableColumnFlags_WidthFixed, 72 * s, 0);
-        im.ImGui_TableSetupColumnEx("Version", im.ImGuiTableColumnFlags_WidthFixed, 82 * s, 0);
+        const u = &tr().uninstall;
+        im.ImGui_TableSetupColumnEx(u.col_program, 0, 300 * s, 0);
+        im.ImGui_TableSetupColumnEx(u.col_publisher, 0, 190 * s, 0);
+        im.ImGui_TableSetupColumnEx(u.col_installed, im.ImGuiTableColumnFlags_WidthFixed, 82 * s, 0);
+        im.ImGui_TableSetupColumnEx(tr().common.col_size, im.ImGuiTableColumnFlags_WidthFixed, 72 * s, 0);
+        im.ImGui_TableSetupColumnEx(u.col_version, im.ImGuiTableColumnFlags_WidthFixed, 82 * s, 0);
         im.ImGui_TableHeadersRow();
         var clip = std.mem.zeroes(im.ImGuiListClipper);
         im.ImGuiListClipper_Begin(&clip, @intCast(v.shown.items.len), -1);

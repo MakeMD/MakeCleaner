@@ -1,7 +1,8 @@
 # GUI smoke for Tools (Drive Wiper, System Restore) and Options > Settings: sandbox copy (portable), TEMP/AppData
 # pointed at fixtures. Opens each page over the MakeKit automation pipe, ticks the first drive to show warnings (then
 # unticks it), takes screenshots. Never clicks Wipe (disabled until a drive is ticked, checked);
-# NEVER Remove / Erase / Restart as admin. Options > Settings: secure delete 3 passes + TempOlderThan24h are saved. Pure ASCII (PS 5.1).
+# NEVER Remove / Erase / Restart as admin. Options > Settings: secure delete 3 passes + TempOlderThan24h are saved;
+# the Language combo saves Language=pl/auto/uk, and a restart without MAKEKIT_LANG shows the saved language. Pure ASCII (PS 5.1).
 param([int]$Screen = 1, [string]$BinDir = '', [string]$ShotDir = $env:TEMP)
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
@@ -58,8 +59,26 @@ try {
     if ($ini -notmatch 'SecureDeletePasses=3' -or $ini -notmatch 'TempOlderThan24h=True') { $fail += 'settings not saved' }
     Save-McShot $app (Join-Path $ShotDir 'makecleaner-options.png')
 
+    # Language combo (kit.i18n.combo): the pick is saved at once; MAKEKIT_LANG=en (Get-McEnv) keeps this run English.
+    Invoke-AutoClick $app '##language'; Invoke-AutoClick $app '##lang_pl'; $null = Invoke-AutoFrames $app 2
+    if ([IO.File]::ReadAllText($sb.Ini) -notmatch '(?m)^Language=pl\r?$') { $fail += 'Language=pl not saved' }
+    Invoke-AutoClick $app '##language'; Invoke-AutoClick $app '##lang_auto'; $null = Invoke-AutoFrames $app 2
+    if ([IO.File]::ReadAllText($sb.Ini) -notmatch '(?m)^Language=auto\r?$') { $fail += 'Language=auto not saved' }
+    Invoke-AutoClick $app '##language'; Invoke-AutoClick $app '##lang_uk'; $null = Invoke-AutoFrames $app 2
+    if ([IO.File]::ReadAllText($sb.Ini) -notmatch '(?m)^Language=uk\r?$') { $fail += 'Language=uk not saved' }
+    if (-not (Get-McItems $app 'Settings##optionsNav0')) { $fail += 'MAKEKIT_LANG=en did not keep English' }
+
     $code = Close-McApp $app
     if ($code -ne 0) { $fail += "exit code $code" }
+
+    # Restart without the override: the saved Language=uk applies (labels keep their ##ids, the text changes).
+    $app = Start-McApp $sb -Screen $Screen -Env @{ MAKEKIT_LANG = 'auto' }
+    $an = @(Get-McItems $app '*##analyze')
+    Write-Host ("saved language applied: analyze button = " + ($an | ForEach-Object { $_.label }))
+    if ($an.Count -ne 1 -or $an[0].label -eq 'Analyze##analyze' -or (Get-McItems $app 'Cleaner')) { $fail += 'Language=uk not applied at startup' }
+    Save-McShot $app (Join-Path $ShotDir 'makecleaner-cleaner-uk.png')
+    $code = Close-McApp $app
+    if ($code -ne 0) { $fail += "exit code $code (uk run)" }
     if ($fail) { throw ('SMOKE FAILED: ' + ($fail -join ', ')) }
     Write-Host 'SMOKE OK'
 } finally {

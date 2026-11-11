@@ -6,6 +6,8 @@ const Ctx = @import("ctx.zig").Ctx;
 const ui = @import("tools_ui.zig");
 const cookies = @import("../core/cookies.zig");
 const browsers = @import("../core/browsers.zig");
+const T = @import("../i18n/tr.zig");
+const tr = T.tr;
 
 const im = kit.im;
 const Sel = std.AutoHashMapUnmanaged(usize, void);
@@ -44,7 +46,7 @@ pub const View = struct {
     fn scan(v: *View) void {
         if (v.job.thread != null) return;
         _ = v.next_arena.reset(.free_all);
-        v.status.set("Reading cookies from browsers...", .{});
+        v.status.set("{s}", .{tr().cookies.reading});
         v.job.start(v, worker) catch {};
     }
 
@@ -70,8 +72,13 @@ pub const View = struct {
         ctx.settings.save(ctx.io) catch {};
         v.clearSel();
         // the scan's status line, kept current (C# left it stale after Keep / Remove)
-        if (!v.job.isRunning()) v.status.set("{d} domains with cookies, {d} kept", .{ v.found.len, parsed.len });
+        if (!v.job.isRunning()) v.setCount(parsed.len);
         return parsed.len;
+    }
+
+    /// "N domains with cookies, M kept".
+    fn setCount(v: *View, kept_n: usize) void {
+        v.status.tset(kit.i18n.pick(tr().cookies.status, v.found.len), .{ v.found.len, kept_n });
     }
 
     /// A host name as cookies store it (after Cookies.Normalize): labels of letters, digits, '-' or '_' (bytes >= 0x80
@@ -108,7 +115,7 @@ pub const View = struct {
         if (v.job.takeFinished()) {
             var eb: [512]u8 = undefined;
             if (v.job.errorText(&eb)) |e| {
-                v.status.set("Could not read cookies: {s}", .{e});
+                v.status.tset(tr().cookies.read_failed, .{e});
             } else {
                 std.mem.swap(std.heap.ArenaAllocator, &v.arena, &v.next_arena);
                 _ = v.next_arena.reset(.free_all);
@@ -116,12 +123,14 @@ pub const View = struct {
                 v.clearSel();
                 const k = kept(ctx);
                 defer ctx.gpa.free(k);
-                v.status.set("{d} domains with cookies, {d} kept", .{ v.found.len, k.len });
+                v.setCount(k.len);
             }
         }
 
-        ui.title(ctx, "Cookies");
-        ui.muted("Domains to keep when browser cookies are cleaned (subdomains included).");
+        const t = &tr().cookies;
+        var lb: [128]u8 = undefined;
+        ui.title(ctx, tr().options.nav_cookies);
+        ui.muted(t.intro);
         im.ImGui_Dummy(.{ .x = 0, .y = 6 * s });
 
         // lists + arrows (buttons act before the lists are read, so the lists below are always current)
@@ -130,7 +139,7 @@ pub const View = struct {
         const x0 = im.ImGui_GetCursorPosX();
         im.ImGui_SetCursorPos(.{ .x = x0 + 250 * s + 10 * s, .y = top + im.ImGui_GetFontSize() + list_h / 2 - im.ImGui_GetFrameHeight() });
         im.ImGui_BeginGroup();
-        if (im.ImGui_ButtonEx("Keep >##cookieToKeep", .{ .x = 90 * s, .y = 0 })) {
+        if (im.ImGui_ButtonEx(ui.idLabel(&lb, t.keep, "cookieToKeep", .{}).ptr, .{ .x = 90 * s, .y = 0 })) {
             const k = kept(ctx);
             defer ctx.gpa.free(k);
             var all = v.visible(ctx.gpa, k);
@@ -142,7 +151,7 @@ pub const View = struct {
             _ = v.saveList(ctx, more.items);
         }
         im.ImGui_Dummy(.{ .x = 0, .y = 4 * s });
-        if (im.ImGui_ButtonEx("< Remove##cookieRemove", .{ .x = 90 * s, .y = 0 })) {
+        if (im.ImGui_ButtonEx(ui.idLabel(&lb, t.remove, "cookieRemove", .{}).ptr, .{ .x = 90 * s, .y = 0 })) {
             const k = kept(ctx);
             defer ctx.gpa.free(k);
             var rest: std.ArrayList([]const u8) = .empty;
@@ -157,20 +166,20 @@ pub const View = struct {
         var all = v.visible(ctx.gpa, k);
         defer all.deinit(ctx.gpa);
         im.ImGui_SetCursorPos(.{ .x = x0, .y = top });
-        column(ctx, "Cookies on computer", "##cookieAll", "ca", all.items, &v.sel_all, &v.anchor_all, list_h);
+        column(ctx, t.col_all, "##cookieAll", "ca", all.items, &v.sel_all, &v.anchor_all, list_h);
         im.ImGui_SetCursorPos(.{ .x = x0 + 250 * s + 10 * s + 90 * s + 10 * s, .y = top });
-        column(ctx, "Cookies to keep", "##cookieKeep", "ck", k, &v.sel_keep, &v.anchor_keep, list_h);
+        column(ctx, t.col_keep, "##cookieKeep", "ck", k, &v.sel_keep, &v.anchor_keep, list_h);
         im.ImGui_Dummy(.{ .x = 0, .y = 8 * s });
 
         _ = v.domain.input("##cookieDomain", 200 * s);
         im.ImGui_SameLineEx(0, 8 * s);
-        if (ui.button("Add##cookieAdd", true)) v.add(ctx);
+        if (ui.button(ui.idLabel(&lb, tr().common.add, "cookieAdd", .{}).ptr, true)) v.add(ctx);
         im.ImGui_SameLineEx(0, 8 * s);
-        if (ui.button("Rescan##cookieScan", !v.job.isRunning())) v.scan();
+        if (ui.button(ui.idLabel(&lb, t.rescan, "cookieScan", .{}).ptr, !v.job.isRunning())) v.scan();
         im.ImGui_SameLineEx(0, 8 * s);
-        if (ui.button("Import...##cookieImport", true)) v.import(ctx);
+        if (ui.button(ui.idLabel(&lb, t.import, "cookieImport", .{}).ptr, true)) v.import(ctx);
         im.ImGui_SameLineEx(0, 8 * s);
-        if (ui.button("Export...##cookieExport", true)) v.exportList(ctx);
+        if (ui.button(ui.idLabel(&lb, t.@"export", "cookieExport", .{}).ptr, true)) v.exportList(ctx);
         im.ImGui_Dummy(.{ .x = 0, .y = 4 * s });
         im.ImGui_PushFontFloat(ctx.app.fonts.bold, 0);
         ui.status("cookieStatus", v.status.slice(), ui.pal.text);
@@ -208,7 +217,7 @@ pub const View = struct {
     fn add(v: *View, ctx: *Ctx) void {
         const parsed = cookies.parse(ctx.gpa, v.domain.slice()) catch return;
         defer cookies.freeList(ctx.gpa, parsed);
-        if (parsed.len != 1 or !validDomain(parsed[0])) return v.status.set("Enter a domain like example.com.", .{});
+        if (parsed.len != 1 or !validDomain(parsed[0])) return v.status.set("{s}", .{tr().cookies.enter_domain});
         const k = kept(ctx);
         defer ctx.gpa.free(k);
         var list: std.ArrayList([]const u8) = .empty;
@@ -217,17 +226,17 @@ pub const View = struct {
         list.append(ctx.gpa, parsed[0]) catch return;
         _ = v.saveList(ctx, list.items);
         v.domain.set("");
-        v.status.set("Keeping cookies of {s} and its subdomains.", .{parsed[0]});
+        v.status.tset(tr().cookies.keeping, .{parsed[0]});
     }
 
     fn import(v: *View, ctx: *Ctx) void {
         const files = (kit.win.openFiles(ctx.gpa, ctx.app.hwnd, false, .{ .filters = &.{
-            .{ .name = "Text files (*.txt)", .spec = "*.txt" },
-            .{ .name = "All files (*.*)", .spec = "*.*" },
+            .{ .name = tr().common.text_files, .spec = "*.txt" },
+            .{ .name = tr().common.all_files, .spec = "*.*" },
         } }) catch null) orelse return;
         defer kit.win.freeList(ctx.gpa, files);
         if (files.len == 0) return;
-        const text = std.Io.Dir.cwd().readFileAlloc(ctx.io, files[0], ctx.gpa, .limited(16 << 20)) catch |e| return v.status.set("Could not read the file: {f}", .{kit.win.errText(e)});
+        const text = std.Io.Dir.cwd().readFileAlloc(ctx.io, files[0], ctx.gpa, .limited(16 << 20)) catch |e| return v.status.tset(tr().cookies.file_read_failed, .{kit.win.errText(e)});
         defer ctx.gpa.free(text);
         const added = cookies.parse(ctx.gpa, text) catch return;
         defer cookies.freeList(ctx.gpa, added);
@@ -241,19 +250,24 @@ pub const View = struct {
             if (validDomain(d)) list.append(ctx.gpa, d) catch return else bad += 1;
         }
         _ = v.saveList(ctx, list.items);
-        if (bad == 0) v.status.set("Imported {d} domains.", .{added.len}) else v.status.set("Imported {d} domains, {d} invalid lines skipped.", .{ added.len - bad, bad });
+        const t = &tr().cookies;
+        var b1: [64]u8 = undefined;
+        var b2: [64]u8 = undefined;
+        const ok = added.len - bad;
+        if (bad == 0) v.status.tset(t.imported, .{T.n(&b1, t.domains, ok, ok)}) else v.status.tset(t.imported_skipped, .{ T.n(&b1, t.domains, ok, ok), T.n(&b2, t.invalid_lines, bad, bad) });
     }
 
     fn exportList(v: *View, ctx: *Ctx) void {
         const path = (kit.win.saveFile(ctx.gpa, ctx.app.hwnd, .{
             .file_name = "cookies-to-keep.txt",
-            .filters = &.{.{ .name = "Text files (*.txt)", .spec = "*.txt" }},
+            .filters = &.{.{ .name = tr().common.text_files, .spec = "*.txt" }},
             .default_ext = "txt",
         }) catch null) orelse return;
         defer ctx.gpa.free(path);
         const k = kept(ctx);
         defer ctx.gpa.free(k);
-        ui.writeLines(ctx.io, path, k) catch |e| return v.status.set("Could not write the file: {f}", .{kit.win.errText(e)});
-        v.status.set("Exported {d} domains.", .{k.len});
+        ui.writeLines(ctx.io, path, k) catch |e| return v.status.tset(tr().cookies.file_write_failed, .{kit.win.errText(e)});
+        var b1: [64]u8 = undefined;
+        v.status.tset(tr().cookies.exported, .{T.n(&b1, tr().cookies.domains, k.len, k.len)});
     }
 };

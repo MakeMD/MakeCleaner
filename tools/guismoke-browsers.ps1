@@ -30,7 +30,7 @@ try {
     Set-McIni $sb -On 'Temporary Files' # browser items keep their defaults (fixture browsers only)
 
     $app = Start-McApp $sb -Screen $Screen
-    $null = Wait-AutoLabel $app '*applications detected##status'
+    $null = Wait-AutoLabel $app '*detected##status'
     Invoke-AutoClick $app 'Applications##tabApps'; $null = Invoke-AutoFrames $app 3
     $appGroups = @(Get-McItems $app '*##ag:*' | ForEach-Object { $_.label -replace '^.*##ag:', '' })
     $appChrome = @(Get-McItems $app '*##ai:Google Chrome*' | ForEach-Object { $_.label -replace '^.*##ai:', '' }) # Winapp2 Chrome entries

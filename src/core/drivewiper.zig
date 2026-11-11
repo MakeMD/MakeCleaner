@@ -5,6 +5,7 @@ const std = @import("std");
 const kit = @import("kit");
 const w = kit.w;
 const common = @import("common.zig");
+const T = @import("../i18n/tr.zig");
 
 const Allocator = std.mem.Allocator;
 const Io = std.Io;
@@ -28,8 +29,10 @@ const tempPath = common.tempPath;
 
 /// DriveWiper.CheckErasable: null = may be erased entirely; otherwise the reason (caller frees).
 pub fn checkErasable(gpa: Allocator, root: []const u8, system_root: []const u8, exe_root: []const u8) !?[]u8 {
-    if (common.eqlIgnoreCase(root, system_root)) return try gpa.print("{s} is the system drive and cannot be erased entirely.", .{root});
-    if (common.eqlIgnoreCase(root, exe_root)) return try gpa.print("MakeCleaner is running from {s}; it cannot erase its own drive.", .{root});
+    const t = &T.tr().wiper;
+    var buf: [300]u8 = undefined;
+    if (common.eqlIgnoreCase(root, system_root)) return try gpa.dupe(u8, T.fmt(&buf, t.system_drive, .{root}));
+    if (common.eqlIgnoreCase(root, exe_root)) return try gpa.dupe(u8, T.fmt(&buf, t.own_drive, .{root}));
     return null;
 }
 

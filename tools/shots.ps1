@@ -17,7 +17,7 @@ try {
     for ($i = 0; $i -lt 60; $i++) { [IO.File]::WriteAllBytes((Join-Path $sb.Temp "f$i.tmp"), (New-Object byte[] (1000 * ($i + 1)))) }
     Set-McIni $sb -On 'Temporary Files'
     $app = Start-McApp $sb -Screen $Screen
-    $null = Wait-AutoLabel $app '*applications detected##status'
+    $null = Wait-AutoLabel $app '*detected##status'
 
     Invoke-AutoClick $app 'Analyze##analyze'
     $null = Wait-AutoLabel $app 'Analysis complete*##status' 60000

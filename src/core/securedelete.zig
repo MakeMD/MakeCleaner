@@ -8,6 +8,7 @@ const std = @import("std");
 const w = @import("kit").w;
 const common = @import("common.zig");
 const fw = @import("filetools_win.zig");
+const T = @import("../i18n/tr.zig");
 
 const Io = std.Io;
 const Handle = fw.Handle;
@@ -130,7 +131,7 @@ pub fn wipeFreeSpace(io: Io, dir: []const u8, passes: u8, progress: ?common.Prog
         Io.Dir.cwd().deleteTree(io, root) catch {};
     }
     const buf = try arena.alloc(u8, buf_size);
-    var msg_buf: [64]u8 = undefined;
+    var msg_buf: [160]u8 = undefined; // translated texts are longer than the English ones
     var total: u64 = 0;
     if (pats[0]) |first| fill(buf, first);
     var full = false;
@@ -159,14 +160,14 @@ pub fn wipeFreeSpace(io: Io, dir: []const u8, passes: u8, progress: ?common.Prog
             pos += n;
         }
         try f.flush();
-        if (progress) |p| p.report(std.mem.print(&msg_buf, "Pass 1/{d}: {d} MB written", .{ pats.len, total >> 20 }) catch unreachable);
+        if (progress) |p| p.report(T.fmt(&msg_buf, T.tr().wiper.pass_written, .{ pats.len, total >> 20 }));
     }
     for (pats[1..], 2..) |pat, num| {
         for (files.items) |f| {
             try common.check(cancel);
             try writePass(io, f, try f.len(), pat, buf);
         }
-        if (progress) |p| p.report(std.mem.print(&msg_buf, "Pass {d}/{d} done", .{ num, pats.len }) catch unreachable);
+        if (progress) |p| p.report(T.fmt(&msg_buf, T.tr().wiper.pass_done, .{ num, pats.len }));
     }
     return total;
 }

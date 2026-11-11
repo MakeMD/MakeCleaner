@@ -10,6 +10,8 @@ const regfix = @import("g1_regfix.zig");
 const common = @import("../core/common.zig");
 const regcleaner = @import("../core/regcleaner.zig");
 const custom = @import("../core/custom.zig");
+const T = @import("../i18n/tr.zig");
+const tr = T.tr;
 
 const im = kit.im;
 const pal = kit.app.palettes.carbon;
@@ -18,8 +20,6 @@ const Job = kit.jobs.Job;
 const Tri = kit.ui.Tri;
 const RegIssue = regcleaner.RegIssue;
 const cats = &regcleaner.categories;
-
-const intro = "Pick the categories on the left, then press Scan for Issues. Scanning changes nothing.";
 
 /// One issue line; the box is the user's pick for Review. Strings live in scan_arena.
 const Row = struct { issue: RegIssue, target: []const u8, on: bool = true };
@@ -60,7 +60,7 @@ pub const Page = struct {
             var kb: [96]u8 = undefined;
             on.* = ctx.settings.getBool(std.mem.print(&kb, "Reg:{s}", .{c.name}) catch c.name, true);
         }
-        try p.status.appendSlice(ctx.gpa, intro);
+        try p.status.appendSlice(ctx.gpa, tr().registry.intro);
         return p;
     }
 
@@ -84,9 +84,11 @@ pub const Page = struct {
         p.review_issues = &.{};
     }
 
-    fn say(p: *Page, comptime fmt: []const u8, args: anytype) void {
+    /// Status line from a translated "{0}" template.
+    fn say(p: *Page, template: []const u8, args: anytype) void {
+        var buf: [4096]u8 = undefined;
         p.status.clearRetainingCapacity();
-        p.status.print(p.gpa, fmt, args) catch {};
+        p.status.appendSlice(p.gpa, T.fmt(&buf, template, args)) catch {};
     }
 
     pub fn draw(self: *Page, ctx: *Ctx) void {
@@ -117,7 +119,8 @@ pub const Page = struct {
         for (p.cat_on) |on| n += @intFromBool(on);
         var all: Tri = if (n == 0) .off else if (n == cats.len) .on else .mixed;
         im.ImGui_PushFontFloat(g.boldFont(), 0);
-        const changed_all = kit.ui.triCheckbox("All categories##regall", &all);
+        var ab: [128]u8 = undefined;
+        const changed_all = kit.ui.triCheckbox(ui.idLabel(&ab, tr().registry.all_categories, "regall", .{}).ptr, &all);
         im.ImGui_PopFont();
         im.ImGui_Dummy(.{ .x = 0, .y = 2 * ui.scale() });
         if (changed_all) {
@@ -126,8 +129,8 @@ pub const Page = struct {
             for (0..cats.len) |i| p.setCat(ctx, i, on);
         }
         for (cats, 0..) |c, i| {
-            var buf: [96]u8 = undefined;
-            const lbl = std.mem.printSentinel(&buf, "{s}##regcat:{s}", .{ c.name, c.name }, 0) catch continue;
+            var buf: [256]u8 = undefined;
+            const lbl = std.mem.printSentinel(&buf, "{s}##regcat:{s}", .{ T.show("reg_cat", c.name), c.name }, 0) catch continue;
             var v: Tri = if (p.cat_on[i]) .on else .off;
             if (kit.ui.triCheckbox(lbl.ptr, &v)) p.setCat(ctx, i, v == .on);
         }
@@ -139,7 +142,7 @@ pub const Page = struct {
         var kb: [96]u8 = undefined;
         const key = std.mem.print(&kb, "Reg:{s}", .{cats[i].name}) catch return;
         ctx.settings.set(key, on) catch {};
-        ctx.settings.save(ctx.io) catch |e| p.say("Could not save the settings: {f}", .{kit.win.errText(e)});
+        ctx.settings.save(ctx.io) catch |e| p.say(tr().registry.settings_failed, .{kit.win.errText(e)});
     }
 
     // ------------------------------------------------------------ right side
@@ -151,9 +154,11 @@ pub const Page = struct {
         const shown = if (job_status.len > 0) job_status else p.status.items;
         var pbuf: [64]u8 = undefined;
         const pct = g.pctText(&pbuf, p.bar_done, p.bar_total);
-        if (g.progressStrip("##regstrip", shown, "regstatus", "Cancel##regcancel", p.phase == .scanning, p.bar_done, p.bar_total, pct, "regprogress")) {
+        const r = &tr().registry;
+        var lb: [160]u8 = undefined;
+        if (g.progressStrip("##regstrip", shown, "regstatus", ui.idLabel(&lb, tr().common.cancel, "regcancel", .{}).ptr, p.phase == .scanning, p.bar_done, p.bar_total, pct, "regprogress")) {
             p.work.cancel();
-            p.say("Cancelling...", .{});
+            p.say(tr().common.cancelling, .{});
         }
 
         const btn_h = g.buttonHeight() + 12 * s;
@@ -165,10 +170,11 @@ pub const Page = struct {
 
         // Scan left, Review right
         const idle = p.phase == .idle;
-        if (g.button("Scan for Issues##regscan", idle, false)) p.startScan(ctx);
+        if (g.button(ui.idLabel(&lb, r.scan, "regscan", .{}).ptr, idle, false)) p.startScan(ctx);
         im.ImGui_SameLine();
-        g.alignRight(g.buttonWidth("Review selected Issues...##regfix"));
-        if (g.button("Review selected Issues...##regfix", idle and p.rows.items.len > 0, true)) p.startReview(ctx);
+        const review = ui.idLabel(&lb, r.review, "regfix", .{});
+        g.alignRight(g.buttonWidth(review.ptr));
+        if (g.button(review.ptr, idle and p.rows.items.len > 0, true)) p.startReview(ctx);
     }
 
     fn drawList(p: *Page, ctx: *Ctx, w: f32, h: f32) void {
@@ -181,9 +187,10 @@ pub const Page = struct {
         defer im.ImGui_EndTable();
         im.ImGui_TableSetupScrollFreeze(0, 1);
         im.ImGui_TableSetupColumnEx("##check", im.ImGuiTableColumnFlags_WidthFixed, im.ImGui_GetFrameHeight(), 0);
-        im.ImGui_TableSetupColumnEx("Problem", im.ImGuiTableColumnFlags_WidthFixed, 170 * s, 0);
-        im.ImGui_TableSetupColumnEx("Data", im.ImGuiTableColumnFlags_WidthStretch, 0.45, 0);
-        im.ImGui_TableSetupColumnEx("Registry key", im.ImGuiTableColumnFlags_WidthStretch, 0.55, 0);
+        const t = &tr().registry;
+        im.ImGui_TableSetupColumnEx(t.col_problem, im.ImGuiTableColumnFlags_WidthFixed, 170 * s, 0);
+        im.ImGui_TableSetupColumnEx(t.col_data, im.ImGuiTableColumnFlags_WidthStretch, 0.45, 0);
+        im.ImGui_TableSetupColumnEx(t.col_key, im.ImGuiTableColumnFlags_WidthStretch, 0.55, 0);
         im.ImGui_TableHeadersRow();
 
         const rows = p.rows.items;
@@ -209,7 +216,7 @@ pub const Page = struct {
                 var v: Tri = if (r.on) .on else .off;
                 if (kit.ui.triCheckbox(chk.ptr, &v)) r.on = v == .on;
                 _ = im.ImGui_TableNextColumn();
-                cell(r.issue.problem);
+                cell(problemText(&r.issue));
                 _ = im.ImGui_TableNextColumn();
                 cell(r.issue.data);
                 _ = im.ImGui_TableNextColumn();
@@ -225,14 +232,19 @@ pub const Page = struct {
             defer im.ImGui_EndPopup();
             const idle = p.phase == .idle;
             const sel: ?*const RegIssue = if (p.selected) |i| (if (i < rows.len) &rows[i].issue else null) else null;
-            if (im.ImGui_MenuItemEx("Select all", null, false, idle)) p.tick(null, true);
-            if (im.ImGui_MenuItemEx("Select none", null, false, idle)) p.tick(null, false);
-            if (im.ImGui_MenuItemEx("Select all of this type", null, false, idle and sel != null)) p.tick(sel.?.category, true);
-            if (im.ImGui_MenuItemEx("Deselect all of this type", null, false, idle and sel != null)) p.tick(sel.?.category, false);
+            if (im.ImGui_MenuItemEx(t.select_all, null, false, idle)) p.tick(null, true);
+            if (im.ImGui_MenuItemEx(t.select_none, null, false, idle)) p.tick(null, false);
+            if (im.ImGui_MenuItemEx(t.select_type, null, false, idle and sel != null)) p.tick(sel.?.category, true);
+            if (im.ImGui_MenuItemEx(t.deselect_type, null, false, idle and sel != null)) p.tick(sel.?.category, false);
             im.ImGui_Separator();
-            if (im.ImGui_MenuItemEx("Open in RegEdit", null, false, sel != null)) p.openInRegedit(sel.?.key_path);
-            if (im.ImGui_MenuItemEx("Add to Exclude list", null, false, idle and sel != null)) p.exclude(ctx, p.selected.?);
+            if (im.ImGui_MenuItemEx(t.open_regedit, null, false, sel != null)) p.openInRegedit(sel.?.key_path);
+            if (im.ImGui_MenuItemEx(t.add_exclude, null, false, idle and sel != null)) p.exclude(ctx, p.selected.?);
         }
+    }
+
+    /// Problem column: the registry category's problem text in the current language.
+    fn problemText(i: *const RegIssue) []const u8 {
+        return T.show("reg_problem", i.problem);
     }
 
     /// A cell whose text may be cut at the column edge: full text as a tooltip when it is.
@@ -256,7 +268,7 @@ pub const Page = struct {
             p.chosen[p.n_chosen] = i;
             p.n_chosen += 1;
         };
-        if (p.n_chosen == 0) return p.say("Tick at least one category on the left.", .{});
+        if (p.n_chosen == 0) return p.say(tr().registry.tick_category, .{});
         p.rows.clearRetainingCapacity(); // rows point into scan_arena
         p.selected = null;
         _ = p.scan_arena.reset(.retain_capacity);
@@ -264,10 +276,10 @@ pub const Page = struct {
         p.excluded = custom.registryExcludes(p.scan_arena.allocator(), ctx.settings) catch &.{};
         p.scan_ok = false;
         p.phase = .scanning;
-        p.say("Scanning...", .{});
+        p.say(tr().common.scanning, .{});
         p.work.start(p, scanWorker) catch |e| {
             p.phase = .idle;
-            p.say("Scan failed: {f}", .{kit.win.errText(e)});
+            p.say(tr().registry.scan_failed, .{kit.win.errText(e)});
         };
     }
 
@@ -279,7 +291,8 @@ pub const Page = struct {
         job.setTotal(p.n_chosen);
         for (p.chosen[0..p.n_chosen], 0..) |ci, i| {
             job.setDone(i);
-            job.setStatus("Scanning: {s}...", .{cats[ci].name});
+            var sb: [256]u8 = undefined;
+            job.setStatus("{s}", .{T.fmt(&sb, tr().registry.scanning_cat, .{T.show("reg_cat", cats[ci].name)})});
             try p.found.appendSlice(a, try scanner.scan(a, cats[ci .. ci + 1], p.excluded, &job.cancel_flag));
         }
         job.setDone(p.n_chosen);
@@ -301,25 +314,26 @@ pub const Page = struct {
                     }
                     p.bar_done = p.n_chosen;
                     p.bar_total = p.n_chosen;
-                    p.say("Scan complete: {d} issues found", .{p.rows.items.len});
+                    var nb: [32]u8 = undefined;
+                    const n = p.rows.items.len;
+                    p.say(kit.i18n.pick(tr().registry.scan_complete, n), .{ui.n0(&nb, n)});
                 } else {
                     p.bar_done = 0;
                     p.bar_total = 0;
-                    if (err) |e| p.say("Scan failed: {s}", .{e}) else p.say("Scan cancelled. Nothing was changed.", .{});
+                    if (err) |e| p.say(tr().registry.scan_failed, .{e}) else p.say(tr().registry.scan_cancelled, .{});
                 }
             },
             .backup => {
                 if (err) |e| {
                     p.phase = .idle;
-                    var buf: [700]u8 = undefined;
-                    const msg: []const u8 = std.mem.print(&buf, "The backup could not be written, so nothing was changed.\n{s}", .{e}) catch "The backup could not be written, so nothing was changed.";
-                    p.dialog.show(0, "Registry backup", .err, &.{"OK"}, "{s}", .{msg});
+                    const r = &tr().registry;
+                    p.dialog.show(0, r.backup_title, .err, &.{tr().common.ok}, "{s}\n{s}", .{ r.backup_not_written, e });
                     p.freeReview();
                 } else {
                     p.phase = .fixing;
                     p.fix.start(p.review_issues) catch |e| {
                         p.phase = .idle;
-                        p.say("Could not open the fix dialog: {f}", .{kit.win.errText(e)});
+                        p.say(tr().registry.fix_dialog_failed, .{kit.win.errText(e)});
                     };
                 }
             },
@@ -334,7 +348,7 @@ pub const Page = struct {
         for (p.rows.items, 0..) |r, i| if (r.on) idx.append(p.gpa, i) catch {};
         if (idx.items.len == 0) {
             idx.deinit(p.gpa);
-            return p.say("Tick the issues to fix first.", .{});
+            return p.say(tr().registry.tick_issues, .{});
         }
         p.freeReview();
         p.review_rows = idx.toOwnedSlice(p.gpa) catch return;
@@ -349,7 +363,7 @@ pub const Page = struct {
         p.work.start(p, backupWorker) catch |e| {
             p.phase = .idle;
             p.freeReview();
-            p.say("Backup failed: {f}", .{kit.win.errText(e)});
+            p.say(tr().registry.backup_failed, .{kit.win.errText(e)});
         };
     }
 
@@ -372,9 +386,9 @@ pub const Page = struct {
         }
         p.selected = null;
         const failed = p.fix.failedCount();
-        var fbuf: [48]u8 = undefined;
-        const not_fixed: []const u8 = if (failed > 0) std.mem.print(&fbuf, ", {d} not fixed", .{failed}) catch "" else "";
-        p.say("Fixed {d} issues{s}. Backup: {s}", .{ fixed, not_fixed, p.backup_path });
+        var fbuf: [96]u8 = undefined;
+        const not_fixed: []const u8 = if (failed > 0) T.fmt(&fbuf, tr().registry.not_fixed, .{failed}) else "";
+        p.say(kit.i18n.pick(tr().registry.fixed, fixed), .{ fixed, not_fixed, p.backup_path });
         p.freeReview();
     }
 
@@ -383,7 +397,7 @@ pub const Page = struct {
         const target = p.rows.items[i].target; // scan_arena: survives the removal below
         var buf: [1100]u8 = undefined;
         const entry = std.mem.print(&buf, "REG|{s}", .{target}) catch return;
-        custom.addExclude(p.gpa, p.io, ctx.settings, entry) catch |e| return p.say("Could not save the Exclude list: {f}", .{kit.win.errText(e)});
+        custom.addExclude(p.gpa, p.io, ctx.settings, entry) catch |e| return p.say(tr().cleaner.exclude_failed, .{kit.win.errText(e)});
         var n: usize = 0;
         for (p.rows.items) |r| {
             if (std.mem.eql(u8, r.target, target)) continue;
@@ -392,16 +406,17 @@ pub const Page = struct {
         }
         p.rows.shrinkRetainingCapacity(n);
         p.selected = null;
-        p.say("Excluded: {s}", .{target});
+        p.say(tr().registry.excluded, .{target});
     }
 
     /// Regedit opens at the key stored in its own LastKey setting.
     fn openInRegedit(p: *Page, key_path: []const u8) void {
-        const k = kit.win.createKey(.hkcu, "Software\\Microsoft\\Windows\\CurrentVersion\\Applets\\Regedit", .default) catch |e| return p.say("Could not open RegEdit: {f}", .{kit.win.errText(e)});
+        const failed = tr().registry.regedit_failed;
+        const k = kit.win.createKey(.hkcu, "Software\\Microsoft\\Windows\\CurrentVersion\\Applets\\Regedit", .default) catch |e| return p.say(failed, .{kit.win.errText(e)});
         defer k.close();
         var buf: [1100]u8 = undefined;
         const v = std.mem.print(&buf, "Computer\\{s}", .{key_path}) catch return;
-        k.writeString("LastKey", v) catch |e| return p.say("Could not open RegEdit: {f}", .{kit.win.errText(e)});
-        _ = kit.win.shellExecute(p.gpa, .{ .file = "regedit.exe", .params = "/m" }) catch |e| p.say("Could not open RegEdit: {f}", .{kit.win.errText(e)});
+        k.writeString("LastKey", v) catch |e| return p.say(failed, .{kit.win.errText(e)});
+        _ = kit.win.shellExecute(p.gpa, .{ .file = "regedit.exe", .params = "/m" }) catch |e| p.say(failed, .{kit.win.errText(e)});
     }
 };

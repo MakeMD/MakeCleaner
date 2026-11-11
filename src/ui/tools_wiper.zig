@@ -7,10 +7,13 @@ const ui = @import("tools_ui.zig");
 const securedelete = @import("../core/securedelete.zig");
 const drivewiper = @import("../core/drivewiper.zig");
 const common = @import("../core/common.zig");
+const T = @import("../i18n/tr.zig");
+const tr = T.tr;
 
 const im = kit.im;
 const w = kit.w;
 
+/// Typed confirmation word: the same in every language (the prompt names it as {1}).
 pub const confirm_word = "ERASE";
 const tag_free = 1;
 const tag_refused = 2;
@@ -51,6 +54,7 @@ pub const View = struct {
     prompt: ui.Buf(32) = .{},
     dlg: ui.Dialog = .{},
     cur_root: []const u8 = "", // worker only
+    drives_lang: kit.i18n.Lang = .en, // language of the drive lines (listed again when it changes)
 
     pub fn create(ctx: *Ctx) !*View {
         const v = try ctx.gpa.create(View);
@@ -68,6 +72,7 @@ pub const View = struct {
 
     /// Ready Fixed/Removable drives: "X:\ (System) [SSD]   label   FS   N GB free of M GB".
     fn listDrives(v: *View, gpa: std.mem.Allocator) void {
+        v.drives_lang = kit.i18n.current();
         const sys = drivewiper.systemRoot(gpa) catch null;
         defer if (sys) |p| gpa.free(p);
         const mask = w.GetLogicalDrives();
@@ -94,8 +99,9 @@ pub const View = struct {
             const free_gb = ui.fmt01(&g1, @as(f64, @floatFromInt(free.QuadPart)) / (1 << 30));
             const total_gb = ui.fmt01(&g2, @as(f64, @floatFromInt(total.QuadPart)) / (1 << 30));
             const is_sys = if (sys) |p| common.eqlIgnoreCase(p, root) else false;
-            const txt = std.mem.print(&d.text, "{s}{s}{s}   {s}   {s}   {s} GB free of {s} GB", .{
-                root, if (is_sys) " (System)" else "", if (d.ssd == true) " [SSD]" else "", l8, f8, free_gb, total_gb,
+            var gb: [96]u8 = undefined;
+            const txt = std.mem.print(&d.text, "{s}{s}{s}   {s}   {s}   {s}", .{
+                root, if (is_sys) tr().wiper.system else "", if (d.ssd == true) " [SSD]" else "", l8, f8, T.fmt(&gb, tr().wiper.free_of, .{ free_gb, total_gb }),
             }) catch d.text[0..0];
             d.text_len = txt.len;
             v.drives.append(gpa, d) catch return;
@@ -137,15 +143,16 @@ pub const View = struct {
             for (v.targets[0..v.n_targets]) |*t| {
                 if (drivewiper.checkErasable(gpa, t[0..3], sys, &exe_root) catch null) |why| {
                     defer gpa.free(why);
-                    v.dlg.show(tag_refused, "Drive Wiper", .err, &.{"OK"}, "{s}", .{why});
+                    v.dlg.show(tag_refused, tr().wiper.title, .err, &.{tr().common.ok}, "{s}", .{why});
                     return;
                 }
             }
-            if (!ui.requireAdmin(&v.dlg, tag_admin, "Erasing an entire drive")) return;
+            if (!ui.requireAdmin(&v.dlg, tag_admin, tr().wiper.erasing_drive)) return;
             v.prompt.set("");
             v.prompt_open = true;
         } else {
-            v.dlg.show(tag_free, "Drive Wiper", .danger, &.{ "Wipe free space", "Cancel" }, "Wipe free space on {s} with {d} pass(es)? This can take a long time; the drive is temporarily filled.", .{ v.targetNames(&nb), v.n_passes });
+            const t = &tr().wiper;
+            v.dlg.showT(tag_free, t.title, .danger, &.{ t.wipe_free_btn, tr().common.cancel }, kit.i18n.pick(t.wipe_free_q, v.n_passes), .{ v.targetNames(&nb), v.n_passes });
         }
     }
 
@@ -161,7 +168,8 @@ pub const View = struct {
         for (v.targets[0..v.n_targets]) |*t| {
             const root = t[0..3];
             if (v.entire) {
-                job.setStatus("Formatting {s}", .{root});
+                var sb: [128]u8 = undefined;
+                job.setStatus("{s}", .{T.fmt(&sb, tr().wiper.formatting, .{root})});
                 try drivewiper.format(gpa, v.io, root);
             }
             const dir = try drivewiper.wipeDir(gpa, root);
@@ -169,7 +177,8 @@ pub const View = struct {
             const Rep = struct {
                 fn f(c: ?*anyopaque, s: []const u8) void {
                     const j: *kit.jobs.Job = @ptrCast(@alignCast(c.?));
-                    j.setStatus("Erasing {s}: {s}", .{ j.ctx(View).cur_root, s });
+                    var sb: [256]u8 = undefined;
+                    j.setStatus("{s}", .{T.fmt(&sb, tr().wiper.erasing, .{ j.ctx(View).cur_root, s })});
                 }
             };
             v.cur_root = root;
@@ -182,10 +191,10 @@ pub const View = struct {
         if (v.job.takeFinished()) {
             var eb: [512]u8 = undefined;
             if (v.job.cancelled()) {
-                v.progress.set("Cancelled. Temporary wipe files removed.", .{});
+                v.progress.set("{s}", .{tr().wiper.cancelled});
             } else if (v.job.errorText(&eb)) |e| {
-                v.progress.set("Failed: {s}", .{e});
-            } else v.progress.set("Drive Wiper complete.", .{});
+                v.progress.tset(tr().common.failed, .{e});
+            } else v.progress.set("{s}", .{tr().wiper.complete});
             v.refreshDrives(ctx.gpa); // a format changes label / file system / free space
         }
         if (v.job.isRunning()) {
@@ -199,23 +208,25 @@ pub const View = struct {
             else => {},
         };
         if (v.drawPrompt()) |erase| if (erase) v.startJob();
+        if (v.drives_lang != kit.i18n.current() and !v.job.isRunning()) v.refreshDrives(ctx.gpa);
 
-        im.ImGui_TextUnformatted("Securely erase the free space or the whole contents of a drive.");
+        const t = &tr().wiper;
+        im.ImGui_TextUnformatted(t.intro);
         im.ImGui_Dummy(.{ .x = 0, .y = 8 * s });
         const busy = v.job.isRunning();
         im.ImGui_BeginDisabled(busy);
         const x = im.ImGui_GetCursorPosX();
         im.ImGui_PushFontFloat(ctx.app.fonts.bold, 0);
-        ui.label("Wipe");
+        ui.label(t.wipe);
         im.ImGui_PopFont();
         im.ImGui_SameLineEx(x + 90 * s, 0);
-        _ = ui.combo("wipeMode", &.{ "Free Space Only", "Entire Drive (all data will be erased)" }, &v.mode, 320 * s);
+        _ = ui.combo("wipeMode", &.{ t.mode_free, t.mode_entire }, &v.mode, 320 * s);
         im.ImGui_PushFontFloat(ctx.app.fonts.bold, 0);
-        ui.label("Security");
+        ui.label(t.security);
         im.ImGui_PopFont();
         im.ImGui_SameLineEx(x + 90 * s, 0);
         var items: [methods.len][*:0]const u8 = undefined;
-        inline for (methods, 0..) |m, i| items[i] = std.fmt.comptimePrint("{s}", .{m.label});
+        for (methods, &items) |m, *it| it.* = T.lookup("method", m.label) orelse "?";
         _ = ui.combo("wipePasses", &items, &v.passes, 320 * s);
         im.ImGui_Dummy(.{ .x = 0, .y = 8 * s });
 
@@ -237,10 +248,10 @@ pub const View = struct {
         // warning (Danger), then [progress text] [Wipe] [Cancel]
         var wb: [400]u8 = undefined;
         var ww: std.Io.Writer = .fixed(&wb);
-        if (v.entireMode()) ww.writeAll("WARNING: Entire Drive erases ALL data on the selected drives. The system drive cannot be erased.") catch {};
+        if (v.entireMode()) ww.writeAll(t.warn_entire) catch {};
         for (v.drives.items) |d| if (d.on and d.ssd != false) {
             if (ww.end > 0) ww.writeAll("\n") catch {};
-            ww.writeAll("Solid-state drives can wear out prematurely when securely wiped, and wiping does not reliably reach all of their cells.") catch {};
+            ww.writeAll(t.warn_ssd) catch {};
             break;
         };
         im.ImGui_SetCursorPosY(im.ImGui_GetCursorPosY() + 4 * s);
@@ -254,9 +265,10 @@ pub const View = struct {
         const any = for (v.drives.items) |d| {
             if (d.on) break true;
         } else false;
-        if (ui.danger("Wipe##wipe", !busy and any)) v.run();
+        var lb: [128]u8 = undefined;
+        if (ui.danger(ui.idLabel(&lb, t.wipe, "wipe", .{}).ptr, !busy and any)) v.run();
         im.ImGui_SameLineEx(0, 8 * s);
-        if (ui.button("Cancel##wipeCancel", busy)) v.job.cancel();
+        if (ui.button(ui.idLabel(&lb, tr().common.cancel, "wipeCancel", .{}).ptr, busy)) v.job.cancel();
         if (busy) ctx.app.requestFrames(2);
     }
 
@@ -291,22 +303,23 @@ pub const View = struct {
 
     /// Typed-word confirmation (DriveWiperView.Prompt); see `promptAnswer`.
     fn drawPrompt(v: *View) ?bool {
-        const id = "Drive Wiper##erasePrompt";
+        var idb: [128]u8 = undefined;
+        const id = ui.idLabel(&idb, tr().wiper.title, "erasePrompt", .{});
         if (v.prompt_open) {
-            _ = im.ImGui_OpenPopup(id, 0);
+            _ = im.ImGui_OpenPopup(id.ptr, 0);
             v.prompt_open = false;
         }
         const s = ui.scale();
         im.ImGui_SetNextWindowPosEx(im.ImGuiViewport_GetCenter(im.ImGui_GetMainViewport()), im.ImGuiCond_Appearing, .{ .x = 0.5, .y = 0.5 });
         im.ImGui_SetNextWindowSize(.{ .x = 440 * s, .y = 0 }, 0);
         im.ImGui_PushStyleColorImVec4(im.ImGuiCol_PopupBg, ui.col(ui.pal.bg)); // danger text needs bg (4.9:1), not surface (3.9:1)
-        const open = im.ImGui_BeginPopupModal(id, null, im.ImGuiWindowFlags_NoResize | im.ImGuiWindowFlags_NoSavedSettings);
+        const open = im.ImGui_BeginPopupModal(id.ptr, null, im.ImGuiWindowFlags_NoResize | im.ImGuiWindowFlags_NoSavedSettings);
         im.ImGui_PopStyleColor();
         if (!open) return null;
         defer im.ImGui_EndPopup();
         var nb: [128]u8 = undefined;
         var tb: [300]u8 = undefined;
-        const text = ui.z(&tb, "All data on {s} will be permanently erased.\nType {s} to continue:", .{ v.targetNames(&nb), confirm_word });
+        const text = T.fmt(&tb, tr().wiper.prompt, .{ v.targetNames(&nb), confirm_word });
         im.ImGui_PushStyleColorImVec4(im.ImGuiCol_Text, ui.col(ui.pal.danger));
         im.ImGui_TextWrappedUnformatted(text.ptr);
         im.ImGui_PopStyleColor();
@@ -315,9 +328,10 @@ pub const View = struct {
         const entered = im.ImGui_InputText("##confirmWord", &v.prompt.b, v.prompt.b.len + 1, im.ImGuiInputTextFlags_EnterReturnsTrue);
         im.ImGui_Dummy(.{ .x = 0, .y = 6 * s });
         im.ImGui_SetCursorPosX(im.ImGui_GetCursorPosX() + im.ImGui_GetContentRegionAvail().x - 90 * s * 2 - 8 * s);
-        const ok = ui.danger("Erase##erasePromptOk", true) or entered;
+        var lb: [128]u8 = undefined;
+        const ok = ui.danger(ui.idLabel(&lb, tr().wiper.erase, "erasePromptOk", .{}).ptr, true) or entered;
         im.ImGui_SameLineEx(0, 8 * s);
-        const no = ui.button("Cancel##erasePromptCancel", true) or im.ImGui_IsKeyPressed(im.ImGuiKey_Escape);
+        const no = ui.button(ui.idLabel(&lb, tr().common.cancel, "erasePromptCancel", .{}).ptr, true) or im.ImGui_IsKeyPressed(im.ImGuiKey_Escape);
         const answer = promptAnswer(v.prompt.slice(), ok, no);
         if (answer != null) im.ImGui_CloseCurrentPopup();
         return answer;

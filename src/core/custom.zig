@@ -8,6 +8,7 @@ const kit = @import("kit");
 const common = @import("common.zig");
 const rules = @import("rules.zig");
 const Settings = @import("settings.zig").Settings;
+const T = @import("../i18n/tr.zig");
 
 const Allocator = std.mem.Allocator;
 const Io = std.Io;
@@ -68,19 +69,20 @@ pub fn addExclude(gpa: Allocator, io: Io, s: *Settings, entry: []const u8) !void
 pub fn reject(gpa: Allocator, path: []const u8) !?[]u8 {
     const expanded = try kit.win.expandEnv(gpa, std.mem.trim(u8, path, &std.ascii.whitespace));
     defer gpa.free(expanded);
-    if (!fullyQualified(expanded)) return try gpa.dupe(u8, "Use a full path like D:\\Folder.");
-    const full_raw = try @import("rules_fs.zig").fullPath(gpa, expanded) orelse return try gpa.dupe(u8, "Not a valid path.");
+    const t = &T.tr().include;
+    if (!fullyQualified(expanded)) return try gpa.dupe(u8, t.full_path);
+    const full_raw = try @import("rules_fs.zig").fullPath(gpa, expanded) orelse return try gpa.dupe(u8, t.invalid_path);
     defer gpa.free(full_raw);
     const full = std.mem.trimEnd(u8, full_raw, "\\");
 
-    if (full.len <= 2 or std.mem.startsWith(u8, full, "\\\\")) return try gpa.dupe(u8, "A whole drive or network share cannot be cleaned.");
+    if (full.len <= 2 or std.mem.startsWith(u8, full, "\\\\")) return try gpa.dupe(u8, t.whole_drive);
     // Beyond C#: "C:\*" expands to every top-level folder (Windows, Program Files, Users), none of them a root.
     const rest = full[3..];
     if (std.mem.findAny(u8, rest[0 .. std.mem.findScalar(u8, rest, '\\') orelse rest.len], "*?") != null)
-        return try gpa.dupe(u8, "A wildcard right under a drive cannot be cleaned.");
+        return try gpa.dupe(u8, t.wildcard);
     const windir = try folder(gpa, &kit.w.FOLDERID_Windows);
     defer gpa.free(windir);
-    if (try under(gpa, full, windir)) return try gpa.dupe(u8, "The Windows folder is protected.");
+    if (try under(gpa, full, windir)) return try gpa.dupe(u8, t.windows_protected);
     const pf = try folder(gpa, &kit.w.FOLDERID_ProgramFiles);
     defer gpa.free(pf);
     const pf86 = try folder(gpa, &kit.w.FOLDERID_ProgramFilesX86);
@@ -89,8 +91,9 @@ pub fn reject(gpa: Allocator, path: []const u8) !?[]u8 {
     defer gpa.free(data);
     const profile = try folder(gpa, &kit.w.FOLDERID_Profile);
     defer gpa.free(profile);
+    var why: [1200]u8 = undefined;
     for ([_][]const u8{ pf, pf86, data, profile, Io.Dir.path.dirname(profile) orelse "" }) |p| {
-        if (p.len > 0 and try under(gpa, p, full)) return try gpa.print("This would clean the system folder {s}.", .{p});
+        if (p.len > 0 and try under(gpa, p, full)) return try gpa.dupe(u8, T.fmt(&why, t.system_folder, .{p}));
     }
     return null;
 }

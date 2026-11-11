@@ -6,11 +6,17 @@ const kit = @import("kit");
 const Ctx = @import("ctx.zig").Ctx;
 const ui = @import("tools_ui.zig");
 const startup = @import("../core/startup.zig");
+const T = @import("../i18n/tr.zig");
+const tr = T.tr;
 
 const im = kit.im;
 const Item = startup.StartupItem;
 
-const tab_titles = [_][:0]const u8{ "Windows", "Scheduled Tasks", "Context Menu", "Windows Services" };
+/// Tab titles in the current language (same order as tab_ids).
+fn tabTitles() [4][:0]const u8 {
+    const t = &tr().startup;
+    return .{ t.tab_windows, t.tab_tasks, t.tab_context, t.tab_services };
+}
 const tab_ids = [_][]const u8{ "startupWindows", "startupTasks", "startupContext", "startupServices" };
 const tag_delete = 1;
 const tag_info = 2;
@@ -85,7 +91,8 @@ pub const View = struct {
                 2 => startup.readContextMenu(a, "HKCR", startup.blocked_key),
                 else => startup.readServices(a, startup.services_key),
             };
-            t.* = if (r) |items| .{ .items = items } else |e| .{ .err = try a.print("Error: {f}", .{kit.win.errText(e)}) };
+            var eb: [600]u8 = undefined;
+            t.* = if (r) |items| .{ .items = items } else |e| .{ .err = try a.dupe(u8, T.fmt(&eb, tr().common.err, .{kit.win.errText(e)})) };
             job.addDone(1); // first load: the UI shows next_tabs[0..done] while the rest is read (as C# did)
         }
     }
@@ -102,8 +109,9 @@ pub const View = struct {
         return if (i < items.len) &items[i] else null;
     }
 
+    /// Enabled column: a service's start mode (translated), a context-menu handler's shellex type, else Yes/No.
     fn enabledText(it: *const Item) []const u8 {
-        return if (it.info.len > 0) it.info else if (it.enabled) "Yes" else "No";
+        return if (it.info.len > 0) T.show("svc", it.info) else if (it.enabled) tr().common.yes else tr().common.no;
     }
 
     fn save(v: *View, ctx: *Ctx) void {
@@ -111,12 +119,13 @@ pub const View = struct {
         defer arena.deinit();
         const a = arena.allocator();
         var lines: std.ArrayList([]const u8) = .empty;
-        lines.append(a, "Enabled\tName\tLocation\tCommand") catch return;
+        const st = &tr().startup;
+        lines.append(a, a.print("{s}\t{s}\t{s}\t{s}", .{ st.col_enabled, tr().common.col_name, st.col_location, st.col_command }) catch return) catch return;
         const t = &v.tabs[v.cur];
         if (t.err) |e| lines.append(a, a.print("\t{s}\t\t", .{e}) catch return) catch return;
         for (t.items) |*it| lines.append(a, a.print("{s}\t{s}\t{s}\t{s}", .{ enabledText(it), it.name, it.location, it.command }) catch return) catch return;
         var nb: [64]u8 = undefined;
-        ui.saveText(ctx, &v.dlg, std.mem.print(&nb, "startup {s}", .{tab_titles[v.cur]}) catch "startup", lines.items);
+        ui.saveText(ctx, &v.dlg, std.mem.print(&nb, "startup {s}", .{tabTitles()[v.cur]}) catch "startup", lines.items);
     }
 
     pub fn draw(v: *View, ctx: *Ctx) void {
@@ -127,7 +136,7 @@ pub const View = struct {
             _ = v.next_arena.reset(.free_all);
             v.sel = @splat(null);
             v.loaded = true;
-            if (!v.act_ok) v.dlg.info(tag_info, v.act_name[0..v.act_name_len], "The change was not applied.", .{});
+            if (!v.act_ok) v.dlg.info(tag_info, v.act_name[0..v.act_name_len], tr().startup.not_applied, .{});
             v.act = .none;
             v.act_item = null;
         }
@@ -139,8 +148,8 @@ pub const View = struct {
         const avail = im.ImGui_GetContentRegionAvail();
         if (im.ImGui_BeginChild("##startupMain", .{ .x = avail.x - ui.colWidth(), .y = avail.y }, 0, im.ImGuiWindowFlags_NoBackground)) {
             if (im.ImGui_BeginTabBar("##startupTabs", im.ImGuiTabBarFlags_DrawSelectedOverline)) { // the kit tab look: mint overline
-                for (tab_titles, tab_ids, 0..) |t, id, i| {
-                    var lb: [96]u8 = undefined;
+                for (tabTitles(), tab_ids, 0..) |t, id, i| {
+                    var lb: [256]u8 = undefined;
                     if (!im.ImGui_BeginTabItem(ui.z(&lb, "{s}##{s}", .{ t, id }).ptr, null, 0)) continue;
                     v.cur = i;
                     im.ImGui_EndTabItem();
@@ -154,14 +163,17 @@ pub const View = struct {
         im.ImGui_SameLineEx(0, 12 * s);
         im.ImGui_BeginGroup();
         const it = v.selected();
-        if (ui.colButton("Enable##startupEnable", !busy and it != null and !it.?.enabled)) v.start(.enable, it);
-        if (ui.colButton("Disable##startupDisable", !busy and it != null and it.?.enabled)) v.start(.disable, it);
+        const st = &tr().startup;
+        const c = &tr().common;
+        var lb: [128]u8 = undefined;
+        if (ui.colButton(ui.idLabel(&lb, st.enable, "startupEnable", .{}).ptr, !busy and it != null and !it.?.enabled)) v.start(.enable, it);
+        if (ui.colButton(ui.idLabel(&lb, st.disable, "startupDisable", .{}).ptr, !busy and it != null and it.?.enabled)) v.start(.disable, it);
         const can_delete = it != null and !(it.?.kind == .service and startup.isSystemService(it.?));
-        if (ui.colButton("Delete##startupDelete", !busy and can_delete))
-            v.dlg.confirm(tag_delete, "Delete", "Delete \"{s}\"?\nThis cannot be undone.", .{it.?.name});
+        if (ui.colButton(ui.idLabel(&lb, c.delete, "startupDelete", .{}).ptr, !busy and can_delete))
+            v.dlg.confirm(tag_delete, c.delete, st.delete_q, .{it.?.name});
         im.ImGui_Dummy(.{ .x = 0, .y = 8 * s });
-        if (ui.colButton("Refresh##startupRefresh", !busy)) v.start(.none, null);
-        if (ui.colButton("Save to text file##startupSave", true)) v.save(ctx);
+        if (ui.colButton(ui.idLabel(&lb, c.refresh, "startupRefresh", .{}).ptr, !busy)) v.start(.none, null);
+        if (ui.colButton(ui.idLabel(&lb, c.save_text, "startupSave", .{}).ptr, true)) v.save(ctx);
         im.ImGui_EndGroup();
     }
 
@@ -171,15 +183,16 @@ pub const View = struct {
         if (!im.ImGui_BeginTableEx(ui.z(&lb, "##{s}", .{tab_ids[t]}).ptr, 4, ui.table_flags | im.ImGuiTableFlags_RowBg, .{ .x = 0, .y = 0 }, 0)) return;
         defer im.ImGui_EndTable();
         im.ImGui_TableSetupScrollFreeze(0, 1);
-        im.ImGui_TableSetupColumnEx("Enabled", im.ImGuiTableColumnFlags_WidthFixed, 70 * s, 0);
-        im.ImGui_TableSetupColumnEx("Name", 0, 230 * s, 0);
-        im.ImGui_TableSetupColumnEx("Location", 0, 250 * s, 0);
-        im.ImGui_TableSetupColumnEx("Command", 0, 380 * s, 0);
+        const st = &tr().startup;
+        im.ImGui_TableSetupColumnEx(st.col_enabled, im.ImGuiTableColumnFlags_WidthFixed, 70 * s, 0);
+        im.ImGui_TableSetupColumnEx(tr().common.col_name, 0, 230 * s, 0);
+        im.ImGui_TableSetupColumnEx(st.col_location, 0, 250 * s, 0);
+        im.ImGui_TableSetupColumnEx(st.col_command, 0, 380 * s, 0);
         im.ImGui_TableHeadersRow();
         const tab = v.shown(t) orelse {
             im.ImGui_TableNextRow();
             _ = im.ImGui_TableSetColumnIndex(1);
-            ui.cell("Loading...", "{s}Loading", .{tab_ids[t]});
+            ui.cell(tr().common.loading, "{s}Loading", .{tab_ids[t]});
             return;
         };
         if (tab.err) |e| {

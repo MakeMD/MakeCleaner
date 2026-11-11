@@ -200,7 +200,7 @@ try {
     $null = WaitText '##uninstallCount' '^\d+ programs##' 15000
     Shot 'fix-MC-G2-uninstall-table'
     Set-McText $app '##uninstallSearch' $fxName
-    $null = WaitText '##uninstallCount' '^1 programs##'
+    $null = WaitText '##uninstallCount' '^1 program##'
     $row = @(Items | Where-Object { $_.label -like "$fxName test program##u*" -and $_.label -match '##u\d+$' })
     Check ($row.Count -eq 1) 'fixture program row'
     $u = ($row[0].label -replace '^.*##u', '')
@@ -333,7 +333,7 @@ try {
     Check ($st -like 'Analysis complete: 5 files*') "Browse appended disk2 ($st)"
     $cat = (Item '##daCat0').label
     Write-Host "category 0: $cat"
-    Check ($cat -match '^Pictures  48\.83 KB  1 files .+ 20%###daCat0$') 'category size / count / percent readable'
+    Check ($cat -match '^Pictures  48\.83 KB  1 file .+ 20%###daCat0$') 'category size / count / percent readable'
     Click '##daCat0'
     $null = Wait-AutoItem $app 'two.jpg##daFile0' 3000
     Check ((Item '##daFile0f').label -eq "$($fx['disk'])##daFile0f") 'Folder cell is an item'
@@ -343,7 +343,7 @@ try {
     $null = Wait-AutoItem $app 'Cancel' 3000
     Click 'Delete'
     $st = WaitText '##daStatus' '^Deleted '
-    Check ($st -like 'Deleted 1 files*') "disk delete on the job ($st)"
+    Check ($st -like 'Deleted 1 file*') "disk delete on the job ($st)"
     Check ((Item '##daCat0').label -match '^Pictures  .+  0 files') "category refreshed ($((Item '##daCat0').label))"
     $rep = Join-Path $fx['out'] 'disk report.txt'
     DialogOk 'Save Report...##daSave' $rep
@@ -376,7 +376,7 @@ try {
     $null = WaitText '##cookieStatus' '^Enter a domain like'
     DialogOk 'Import...##cookieImport' (Join-Path $root 'cookies-in.txt')
     $st = WaitText '##cookieStatus' '^Imported '
-    Check ($st -like 'Imported 2 domains, 1 invalid lines skipped.##*') "import skips junk ($st)"
+    Check ($st -like 'Imported 2 domains, 1 invalid line skipped.##*') "import skips junk ($st)"
     Check (@(Items | Where-Object { $_.label -match '##ck\d+$' }).Count -eq 2) 'two kept domains'
     Click '##ck0'
     Click '< Remove##cookieRemove'
@@ -384,7 +384,7 @@ try {
     Check ($st -like "$nFound domains with cookies, 1 kept##*") "status current after Remove ($st)"
     $exp = Join-Path $fx['out'] 'cookies-out.txt'
     DialogOk 'Export...##cookieExport' $exp
-    $null = WaitText '##cookieStatus' '^Exported 1 domains\.'
+    $null = WaitText '##cookieStatus' '^Exported 1 domain\.'
     $lines = CrlfLines $exp
     Check ($lines[0] -eq 'second.net') "export content ($($lines[0]))"
     Shot 'fix-MC-G2-cookies'

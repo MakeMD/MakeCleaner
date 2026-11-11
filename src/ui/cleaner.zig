@@ -13,6 +13,8 @@ const browsers = @import("../core/browsers.zig");
 const custom = @import("../core/custom.zig");
 const bytes = @import("../core/bytes.zig");
 const settings_mod = @import("../core/settings.zig");
+const T = @import("../i18n/tr.zig");
+const tr = T.tr;
 
 const im = kit.im;
 const pal = kit.app.palettes.carbon;
@@ -23,7 +25,6 @@ const Settings = settings_mod.Settings;
 
 /// ponytail: a plain list; Summary holds the totals when there are more files.
 const max_file_lines = 5000;
-const hint_text = "Tick what to clean on the left, then press Analyze. Nothing is deleted until Run Cleaner.";
 
 // Dialog tags
 const tag_warn = 1;
@@ -31,20 +32,32 @@ const tag_browser = 2;
 const tag_not_closed = 3;
 
 /// One checkbox of a tree (CheckNode item): a Rule (Windows/Applications) or a BrowserItem (Browsers).
+/// Its label "<shown name>##<tab>i:<key>" is built every frame, so a language switch shows at once.
 const Node = struct {
-    label: [:0]const u8, // "<name>##<tab>i:<name>"
-    name: []const u8,
+    name: []const u8, // English (Windows.ini, browsers.zig) or Winapp2 name, " *" dropped
     key: []const u8, // Settings key
-    warning: ?[:0]const u8,
+    warning: ?[:0]const u8, // as the rule / item has it (English)
+    browser_id: ?[]const u8 = null, // BrowserItem.id: translated by id
     idx: usize, // into the tree's source list
     on: bool,
     wipe: bool, // Wipe Free Space always starts off: never saved
+
+    /// Display name: own rules and browser items translated, Winapp2 names as they are.
+    fn shown(n: *const Node, tab: []const u8) []const u8 {
+        if (n.browser_id) |id| return T.browserItem(id) orelse n.name;
+        return if (std.mem.eql(u8, tab, "w")) T.show("rule", n.name) else n.name;
+    }
+
+    fn shownWarning(n: *const Node, tab: []const u8) ?[:0]const u8 {
+        const own = if (n.browser_id) |id| T.browserWarning(id) else if (std.mem.eql(u8, tab, "w")) T.ruleWarning(n.name) else null;
+        return own orelse n.warning;
+    }
 };
 
-/// CheckNode group: tri-state, derived from its items.
+/// CheckNode group: tri-state, derived from its items. Labels (per frame): "<shown group>##<tab>g:<group>"
+/// and "##<tab>t:<group>".
 const Group = struct {
-    check_label: [:0]const u8, // "<group>##<tab>g:<group>"
-    tree_label: [:0]const u8, // "##<tab>t:<group>"
+    name: []const u8,
     expanded: bool,
     items: []Node,
 
@@ -67,7 +80,7 @@ const Group = struct {
     }
 };
 
-const Tree = struct { groups: []Group = &.{} };
+const Tree = struct { groups: []Group = &.{}, tab: []const u8 = "" };
 
 /// One results line; `path` is set for a file (context menu: open folder, exclude). Strings live in lines_arena.
 const Line = struct { label: [:0]const u8, found: [:0]const u8, size: [:0]const u8, path: ?[:0]const u8 = null };
@@ -118,6 +131,10 @@ pub const Page = struct {
     has_found: bool = true, // some line has a "Found" text (Files view of plain files has none)
     lines: []Line = &.{},
     selected: ?usize = null,
+    /// language the result lines were built in (rebuilt when it changes)
+    lines_lang: kit.i18n.Lang = .en,
+    /// the status line still says "Detecting installed applications..." (finishLists may replace it)
+    detecting: bool = true,
     clean_enabled: bool = false,
     dialog: ui.Dialog = .{},
     pending_warn: ?*Node = null,
@@ -137,7 +154,7 @@ pub const Page = struct {
         const a = p.arena.allocator();
         p.windows_rules = try cleanpass.windowsRules(a, ctx.io);
         p.win_tree = try ruleTree(a, ctx.settings, "w", p.windows_rules, true);
-        try p.setStatus("Detecting installed applications...", .{});
+        try p.setStatus("{s}", .{tr().cleaner.detecting});
         return p;
     }
 
@@ -181,8 +198,11 @@ pub const Page = struct {
         try p.status.print(p.gpa, fmt, args);
     }
 
-    fn say(p: *Page, comptime fmt: []const u8, args: anytype) void {
-        p.setStatus(fmt, args) catch {};
+    /// Status line from a translated "{0}" template (args: strings, numbers, kit.win.errText...).
+    fn say(p: *Page, template: []const u8, args: anytype) void {
+        var buf: [4096]u8 = undefined;
+        p.detecting = false;
+        p.setStatus("{s}", .{T.fmt(&buf, template, args)}) catch {};
     }
 
     // ------------------------------------------------------------ frame
@@ -191,10 +211,11 @@ pub const Page = struct {
         const p = self;
         if (!p.lists_started) {
             p.lists_started = true; // Page sits at its final address now: safe to hand it to a worker
-            p.lists_job.start(p, listsWorker) catch |e| p.say("Detecting applications failed: {f}", .{kit.win.errText(e)});
+            p.lists_job.start(p, listsWorker) catch |e| p.say(tr().cleaner.detect_failed, .{kit.win.errText(e)});
         }
         if (p.lists_job.takeFinished()) p.finishLists(ctx);
         if (p.work.takeFinished()) p.finishWork(ctx);
+        if (p.lines_lang != kit.i18n.current() and p.phase == .idle) p.showResults(); // the pass is the UI's while idle
         if (p.work.isRunning() and p.phase == .analyzing) {
             p.bar_done = p.work.done.load(.acquire);
             p.bar_total = p.work.total.load(.acquire);
@@ -217,10 +238,11 @@ pub const Page = struct {
         _ = ctx;
         // ponytail: hand-made tab strip, not ImGui_BeginTabItem: imgui's TabItemEx reports its label to the test
         // engine before ItemAdd, so MakeKit automation never sees tab labels. Move back when the kit hooks catch it.
-        const tabs = [_]struct { [*:0]const u8, [*:0]const u8, *Tree }{
-            .{ "Windows##tabWindows", "##windows", &p.win_tree },
-            .{ "Browsers##tabBrowsers", "##browsers", &p.brw_tree },
-            .{ "Applications##tabApps", "##apps", &p.app_tree },
+        const c = &tr().cleaner;
+        const tabs = [_]struct { []const u8, []const u8, [*:0]const u8, *Tree }{
+            .{ c.tab_windows, "tabWindows", "##windows", &p.win_tree },
+            .{ c.tab_browsers, "tabBrowsers", "##browsers", &p.brw_tree },
+            .{ c.tab_apps, "tabApps", "##apps", &p.app_tree },
         };
         const s = ui.scale();
         const dl = im.ImGui_GetWindowDrawList();
@@ -229,7 +251,8 @@ pub const Page = struct {
             const sel = p.tab == i;
             // the kit's ImGui tab look (theme TabSelected + 2 px mint overline), so every tab strip matches
             im.ImGui_PushStyleColorImVec4(im.ImGuiCol_Button, if (sel) ui.col(pal.surface) else kit.app.color(0, 0));
-            if (im.ImGui_Button(t[0])) p.tab = @intCast(i);
+            var lb: [128]u8 = undefined;
+            if (im.ImGui_Button(ui.idLabel(&lb, t[0], "{s}", .{t[1]}).ptr)) p.tab = @intCast(i);
             im.ImGui_PopStyleColor();
             if (sel) {
                 const mn = im.ImGui_GetItemRectMin();
@@ -237,17 +260,21 @@ pub const Page = struct {
             }
         }
         const t = tabs[p.tab];
-        if (im.ImGui_BeginChild(t[1], .{ .x = 0, .y = 0 }, 0, 0)) p.drawTree(t[2]);
+        if (im.ImGui_BeginChild(t[2], .{ .x = 0, .y = 0 }, 0, 0)) p.drawTree(t[3]);
         im.ImGui_EndChild();
     }
 
     fn drawTree(p: *Page, tree: *Tree) void {
+        const tab = tree.tab;
         for (tree.groups) |*gr| {
+            var lb: [600]u8 = undefined;
             im.ImGui_SetNextItemOpen(gr.expanded, im.ImGuiCond_Once);
-            const open = im.ImGui_TreeNodeEx(gr.tree_label.ptr, im.ImGuiTreeNodeFlags_AllowOverlap);
+            const open = im.ImGui_TreeNodeEx(ui.z(&lb, "##{s}t:{s}", .{ tab, gr.name }).ptr, im.ImGuiTreeNodeFlags_AllowOverlap);
             im.ImGui_SameLineEx(0, 2);
             var st = gr.state();
-            if (kit.ui.triCheckbox(gr.check_label.ptr, &st)) gr.set(st == .on);
+            // Browsers groups are browser names; the others are rule groups
+            const shown_group = if (std.mem.eql(u8, tab, "b")) gr.name else T.show("group", gr.name);
+            if (kit.ui.triCheckbox(ui.z(&lb, "{s}##{s}g:{s}", .{ shown_group, tab, gr.name }).ptr, &st)) gr.set(st == .on);
             if (!open) continue;
             // children one indent step right of the GROUP checkbox (TreeNode alone indents only from the arrow,
             // which put child boxes left of the parent box)
@@ -256,15 +283,18 @@ pub const Page = struct {
             defer im.ImGui_UnindentEx(step);
             for (gr.items) |*n| {
                 var v: Tri = if (n.on) .on else .off;
-                if (kit.ui.triCheckbox(n.label.ptr, &v)) {
+                const name = n.shown(tab);
+                const warning = n.shownWarning(tab);
+                const label = ui.z(&lb, "{s}##{s}i:{s}", .{ name, tab, n.key });
+                if (kit.ui.triCheckbox(label.ptr, &v)) {
                     const want = v == .on;
-                    if (want and n.warning != null and !n.on) {
+                    if (want and warning != null and !n.on) {
                         // the box stays off until the user confirms (CheckNode.Confirm)
                         p.pending_warn = n;
-                        p.dialog.show(tag_warn, n.name, .danger, &.{ "Turn on", "Cancel" }, "{s}", .{n.warning.?});
+                        p.dialog.show(tag_warn, name, .danger, &.{ tr().cleaner.turn_on, tr().common.cancel }, "{s}", .{warning.?});
                     } else n.on = want;
                 }
-                kit.ui.checkboxTooltip(n.label.ptr, n.warning); // whole name when cut with "...", + the warning
+                kit.ui.checkboxTooltip(label.ptr, warning); // whole name when cut with "...", + the warning
             }
             im.ImGui_TreePop();
         }
@@ -278,21 +308,23 @@ pub const Page = struct {
         const shown = if (job_status.len > 0) job_status else p.status.items;
         var pbuf: [64]u8 = undefined;
         const pct = g.pctText(&pbuf, p.bar_done, p.bar_total);
-        if (g.progressStrip("##strip", shown, "status", "Cancel##cancel", p.phase == .analyzing, p.bar_done, p.bar_total, pct, "progressText")) {
+        const c = &tr().cleaner;
+        var lb: [160]u8 = undefined;
+        if (g.progressStrip("##strip", shown, "status", ui.idLabel(&lb, tr().common.cancel, "cancel", .{}).ptr, p.phase == .analyzing, p.bar_done, p.bar_total, pct, "progressText")) {
             p.work.cancel();
-            p.say("Cancelling...", .{});
+            p.say(tr().common.cancelling, .{});
         }
 
         // Summary / Files
         im.ImGui_Dummy(.{ .x = 0, .y = 6 * s });
         // kit radio (font-sized circle) with a visible grey ring
         im.ImGui_PushStyleColorImVec4(im.ImGuiCol_Border, ui.col(pal.muted));
-        if (im.ImGui_RadioButton("Summary##viewSummary", !p.view_files) and p.view_files) {
+        if (im.ImGui_RadioButton(ui.idLabel(&lb, c.view_summary, "viewSummary", .{}).ptr, !p.view_files) and p.view_files) {
             p.view_files = false;
             p.showResults();
         }
         im.ImGui_SameLineEx(0, 16 * s);
-        if (im.ImGui_RadioButton("Files##viewFiles", p.view_files) and !p.view_files) {
+        if (im.ImGui_RadioButton(ui.idLabel(&lb, c.view_files, "viewFiles", .{}).ptr, p.view_files) and !p.view_files) {
             p.view_files = true;
             p.showResults();
         }
@@ -307,18 +339,19 @@ pub const Page = struct {
         p.drawResults(ctx, table_w, table_h);
         if (p.lines.len == 0) {
             const wrap = @min(360 * s, table_w - 20 * s);
-            const ts = im.ImGui_CalcTextSizeEx(hint_text, null, false, wrap);
+            const ts = im.ImGui_CalcTextSizeEx(c.hint, null, false, wrap);
             im.ImGui_SetCursorScreenPos(.{ .x = top.x + (table_w - ts.x) / 2, .y = top.y + (table_h - ts.y) / 2 });
-            kit.ui.text("hint", hint_text, pal.muted, wrap);
+            kit.ui.text("hint", c.hint, pal.muted, wrap);
         }
         im.ImGui_SetCursorScreenPos(.{ .x = top.x, .y = top.y + table_h + 12 * s });
 
         // Analyze left, Run Cleaner right
         const idle = p.phase == .idle;
-        if (g.button("Analyze##analyze", idle, false)) p.startAnalyze(ctx);
+        if (g.button(ui.idLabel(&lb, c.analyze, "analyze", .{}).ptr, idle, false)) p.startAnalyze(ctx);
         im.ImGui_SameLine();
-        g.alignRight(g.buttonWidth("Run Cleaner##clean"));
-        if (g.button("Run Cleaner##clean", idle and p.clean_enabled, true)) p.startRunCleaner();
+        const run = ui.idLabel(&lb, c.run_cleaner, "clean", .{});
+        g.alignRight(g.buttonWidth(run.ptr));
+        if (g.button(run.ptr, idle and p.clean_enabled, true)) p.startRunCleaner();
     }
 
     fn drawResults(p: *Page, ctx: *Ctx, w: f32, h: f32) void {
@@ -331,9 +364,10 @@ pub const Page = struct {
         if (!im.ImGui_BeginTableEx("##results", if (found) 3 else 2, flags, .{ .x = w, .y = h }, 0)) return;
         defer im.ImGui_EndTable();
         im.ImGui_TableSetupScrollFreeze(0, 1);
-        im.ImGui_TableSetupColumnEx("Item", im.ImGuiTableColumnFlags_WidthStretch, 0, 0);
-        if (found) im.ImGui_TableSetupColumnEx("Found", im.ImGuiTableColumnFlags_WidthFixed, 110 * s, 0);
-        im.ImGui_TableSetupColumnEx("Size", im.ImGuiTableColumnFlags_WidthFixed, 100 * s, 0);
+        const c = &tr().cleaner;
+        im.ImGui_TableSetupColumnEx(c.col_item, im.ImGuiTableColumnFlags_WidthStretch, 0, 0);
+        if (found) im.ImGui_TableSetupColumnEx(c.col_found, im.ImGuiTableColumnFlags_WidthFixed, 110 * s, 0);
+        im.ImGui_TableSetupColumnEx(tr().common.col_size, im.ImGuiTableColumnFlags_WidthFixed, 100 * s, 0);
         im.ImGui_TableHeadersRow();
 
         var clipper: im.ImGuiListClipper = std.mem.zeroes(im.ImGuiListClipper);
@@ -362,9 +396,9 @@ pub const Page = struct {
         if (im.ImGui_BeginPopup("##filectx", 0)) {
             defer im.ImGui_EndPopup();
             const file = p.phase == .idle and p.selected != null and p.selected.? < p.lines.len and p.lines[p.selected.?].path != null;
-            if (im.ImGui_MenuItemEx("Open containing folder", null, false, file)) p.openFolder();
-            if (im.ImGui_MenuItemEx("Add file to Exclude", null, false, file)) p.exclude(ctx, false);
-            if (im.ImGui_MenuItemEx("Add folder to Exclude", null, false, file)) p.exclude(ctx, true);
+            if (im.ImGui_MenuItemEx(c.open_folder, null, false, file)) p.openFolder();
+            if (im.ImGui_MenuItemEx(c.exclude_file, null, false, file)) p.exclude(ctx, false);
+            if (im.ImGui_MenuItemEx(c.exclude_folder, null, false, file)) p.exclude(ctx, true);
         }
     }
 
@@ -385,8 +419,9 @@ pub const Page = struct {
         p.brw_tree = browserTree(a, ctx.settings, p.browser_items) catch .{};
         p.app_tree = ruleTree(a, ctx.settings, "a", p.app_rules, false) catch .{};
         // an Analyze/Clean started meanwhile owns the status line; don't overwrite its result
-        if (std.mem.startsWith(u8, p.status.items, "Detecting")) {
-            if (err) |e| p.say("Detecting applications failed: {s}", .{e}) else p.say("{d} applications detected", .{p.app_rules.len});
+        if (p.detecting) {
+            var nb: [96]u8 = undefined;
+            if (err) |e| p.say(tr().cleaner.detect_failed, .{e}) else p.say("{0}", .{T.n(&nb, tr().cleaner.apps_detected, p.app_rules.len, p.app_rules.len)});
         }
     }
 
@@ -407,11 +442,11 @@ pub const Page = struct {
         if (!p.useSnapshot(ctx)) return;
         p.phase = .analyzing;
         p.clean_enabled = false;
-        p.say("Analyzing...", .{});
+        p.say(tr().cleaner.analyzing, .{});
         p.work.start(p, analyzeWorker) catch |e| {
             p.phase = .idle;
             p.dropSnapshot(ctx);
-            p.say("Analysis failed: {f}", .{kit.win.errText(e)});
+            p.say(tr().cleaner.analysis_failed, .{kit.win.errText(e)});
         };
     }
 
@@ -431,7 +466,7 @@ pub const Page = struct {
     /// The worker reads a private copy of the settings (Settings is not thread-safe; other pages write it).
     fn useSnapshot(p: *Page, ctx: *Ctx) bool {
         p.snap = g.snapshot(ctx.settings) catch |e| {
-            p.say("Not enough memory: {t}", .{e});
+            p.say(tr().common.not_enough_memory, .{@errorName(e)});
             return false;
         };
         p.pass.settings = &p.snap.?;
@@ -455,11 +490,11 @@ pub const Page = struct {
             .analyzing => {
                 p.dropSnapshot(ctx);
                 if (text) |t| {
-                    p.say("{s}", .{t});
+                    p.say("{0}", .{t});
                     p.bar_done = p.work.done.load(.acquire);
                     p.bar_total = p.work.total.load(.acquire);
                 } else {
-                    if (err) |e| p.say("Analysis failed: {s}", .{e}) else p.say("Analysis cancelled. Nothing will be cleaned.", .{});
+                    if (err) |e| p.say(tr().cleaner.analysis_failed, .{e}) else p.say(tr().cleaner.analysis_cancelled, .{});
                     p.bar_done = 0;
                     p.bar_total = 0;
                 }
@@ -474,14 +509,12 @@ pub const Page = struct {
                     p.ask_idx += 1;
                     p.askNext(ctx);
                 } else {
-                    var buf: [256]u8 = undefined;
-                    const msg: []const u8 = std.mem.print(&buf, "{s} did not close (maybe an unsaved dialog). Skipping it.", .{b.name}) catch "The browser did not close. Skipping it.";
-                    p.dialog.show(tag_not_closed, b.name, .info, &.{"OK"}, "{s}", .{msg});
+                    p.dialog.info(tag_not_closed, b.name, tr().cleaner.not_closed, .{b.name});
                 }
             },
             .cleaning => {
                 p.dropSnapshot(ctx);
-                if (text) |t| p.say("{s}", .{t}) else p.say("Cleaning failed: {s}", .{err orelse "unknown error"});
+                if (text) |t| p.say("{0}", .{t}) else p.say(tr().cleaner.cleaning_failed, .{err orelse tr().cleaner.unknown_error});
                 p.phase = .idle;
                 p.showResults();
                 p.clean_enabled = false;
@@ -506,11 +539,10 @@ pub const Page = struct {
         _ = ctx;
         if (p.ask_idx < p.running.len) {
             const b = p.running[p.ask_idx];
-            var tbuf: [300]u8 = undefined;
-            const text: []const u8 = std.mem.print(&tbuf, "{s} is running, so its files are locked. Close it now, or leave it out of this clean?", .{b.name}) catch b.name;
-            var cbuf: [80]u8 = undefined;
-            const close: []const u8 = std.mem.print(&cbuf, "Close {s}", .{b.name}) catch "Close";
-            p.dialog.show(tag_browser, b.name, .question, &.{ close, "Skip", "Cancel" }, "{s}", .{text});
+            const c = &tr().cleaner;
+            var cbuf: [100]u8 = undefined;
+            const close = T.fmt(&cbuf, c.close_browser, .{b.name});
+            p.dialog.showT(tag_browser, b.name, .question, &.{ close, c.skip, tr().common.cancel }, c.browser_running, .{b.name});
             return;
         }
         p.startClean();
@@ -520,19 +552,19 @@ pub const Page = struct {
         const ctx_settings = p.pass.settings;
         p.snap = g.snapshot(ctx_settings) catch |e| {
             p.phase = .idle;
-            p.say("Not enough memory: {t}", .{e});
+            p.say(tr().common.not_enough_memory, .{@errorName(e)});
             return;
         };
         p.pass.settings = &p.snap.?;
         p.phase = .cleaning;
         p.clean_enabled = false;
-        p.say("Cleaning...", .{});
+        p.say(tr().cleaner.cleaning, .{});
         p.work.start(p, cleanWorker) catch |e| {
             p.pass.settings = ctx_settings;
             p.snap.?.deinit();
             p.snap = null;
             p.phase = .idle;
-            p.say("Cleaning failed: {f}", .{kit.win.errText(e)});
+            p.say(tr().cleaner.cleaning_failed, .{kit.win.errText(e)});
         };
     }
 
@@ -544,7 +576,8 @@ pub const Page = struct {
 
     fn reportWipe(c: ?*anyopaque, v: []const u8) void {
         const job: *Job = @ptrCast(@alignCast(c.?));
-        job.setStatus("Wiping free space... {s}", .{v});
+        var buf: [256]u8 = undefined;
+        job.setStatus("{s}", .{T.fmt(&buf, tr().cleaner.wiping, .{v})});
     }
 
     fn closeWorker(job: *Job) anyerror!void {
@@ -565,7 +598,7 @@ pub const Page = struct {
             tag_browser => switch (a.button) {
                 0 => {
                     p.phase = .closing;
-                    p.say("Closing {s}...", .{p.running[p.ask_idx].name});
+                    p.say(tr().cleaner.closing, .{p.running[p.ask_idx].name});
                     p.work.start(p, closeWorker) catch {
                         p.phase = .asking;
                         p.skipCurrent(ctx);
@@ -591,6 +624,7 @@ pub const Page = struct {
 
     /// ShowResults: rebuilds the lines from the pass (UI thread, only while no worker owns the pass).
     fn showResults(p: *Page) void {
+        p.lines_lang = kit.i18n.current();
         _ = p.lines_arena.reset(.retain_capacity);
         p.selected = null;
         p.lines = p.buildLines(p.lines_arena.allocator()) catch &.{};
@@ -602,17 +636,26 @@ pub const Page = struct {
     fn buildLines(p: *Page, a: Allocator) ![]Line {
         var out: std.ArrayList(Line) = .empty;
         var nb: [32]u8 = undefined;
+        var tb: [600]u8 = undefined;
+        var kb: [300]u8 = undefined;
+        const c = &tr().cleaner;
         if (!p.view_files) {
-            for (p.pass.summary) |r| try add(a, &out, rules.displayName(r.name), try a.printSentinel("{s} items", .{ui.n0(&nb, r.items)}, 0), r.bytes, null);
-            if (p.pass.wipe()) try add(a, &out, "Wipe Free Space", "free space", 0, null);
+            for (p.pass.summary) |r| try add(a, &out, T.ruleOrBrowserKey(&kb, rules.displayName(r.name)), T.n(&tb, c.items, r.items, ui.n0(&nb, r.items)), r.bytes, null);
+            if (p.pass.wipe()) try add(a, &out, tr().rule.wipe_free_space, c.free_space, 0, null);
             return out.items;
         }
         const files = p.pass.files;
         for (files[0..@min(files.len, max_file_lines)]) |f| try add(a, &out, f.path, "", f.size, try a.dupeSentinel(u8, f.path, 0));
-        if (files.len > max_file_lines) try add(a, &out, try a.print("... and {s} more files (see Summary for totals)", .{ui.n0(&nb, files.len - max_file_lines)}), "", 0, null);
-        for (p.pass.reg_keys[0..@min(p.pass.reg_keys.len, max_file_lines)]) |k| try add(a, &out, try a.print("{f}", .{k}), "registry", 0, null);
-        for (p.pass.actions) |x| try add(a, &out, x.label, "", x.bytes, null);
-        for (p.pass.browser_rows) |r| try add(a, &out, try r.item.key(a), try a.printSentinel("{s} entries", .{ui.n0(&nb, r.count)}, 0), 0, null);
+        if (files.len > max_file_lines) {
+            const more = files.len - max_file_lines;
+            try add(a, &out, T.n(&tb, c.more_files, more, ui.n0(&nb, more)), "", 0, null);
+        }
+        for (p.pass.reg_keys[0..@min(p.pass.reg_keys.len, max_file_lines)]) |k| try add(a, &out, try a.print("{f}", .{k}), c.registry, 0, null);
+        for (p.pass.actions) |x| try add(a, &out, T.show("action", x.label), "", x.bytes, null);
+        for (p.pass.browser_rows) |r| {
+            const shown = try a.print("{s}: {s}", .{ r.item.browser, T.browserItem(r.item.id) orelse r.item.name });
+            try add(a, &out, shown, T.n(&tb, c.entries, r.count, ui.n0(&nb, r.count)), 0, null);
+        }
         return out.items;
     }
 
@@ -632,7 +675,7 @@ pub const Page = struct {
         const path = p.lines[p.selected.?].path.?;
         var buf: [2100]u8 = undefined;
         const args = std.mem.print(&buf, "/select,\"{s}\"", .{path}) catch return;
-        _ = kit.win.shellExecute(p.gpa, .{ .file = "explorer.exe", .params = args }) catch |e| p.say("Could not open Explorer: {f}", .{kit.win.errText(e)});
+        _ = kit.win.shellExecute(p.gpa, .{ .file = "explorer.exe", .params = args }) catch |e| p.say(tr().cleaner.explorer_failed, .{kit.win.errText(e)});
     }
 
     /// Writes the same Exclude list Options shows, and drops the file(s) from this run so Run Cleaner leaves them alone.
@@ -644,7 +687,7 @@ pub const Page = struct {
             std.mem.print(&ebuf, "PATH|{s}", .{dir})
         else
             std.mem.print(&ebuf, "FILE|{s}|{s}", .{ dir, std.Io.Dir.path.basename(file) })) catch return;
-        custom.addExclude(p.gpa, p.io, ctx.settings, entry) catch |e| return p.say("Could not save the Exclude list: {f}", .{kit.win.errText(e)});
+        custom.addExclude(p.gpa, p.io, ctx.settings, entry) catch |e| return p.say(tr().cleaner.exclude_failed, .{kit.win.errText(e)});
         var n: usize = 0;
         for (p.pass.files) |f| {
             const drop = if (folder)
@@ -656,7 +699,7 @@ pub const Page = struct {
             n += 1;
         }
         p.pass.files = p.pass.files[0..n];
-        p.say("Added to Exclude: {s}. Analyze again to refresh the totals.", .{if (folder) dir else file});
+        p.say(tr().cleaner.excluded, .{if (folder) dir else file});
         p.showResults(); // after the status: `file` lives in lines_arena
         p.clean_enabled = p.pass.any();
     }
@@ -669,7 +712,7 @@ fn ruleTree(a: Allocator, s: *const Settings, tab: []const u8, list: []const rul
     for (list, 0..) |*r, i| {
         const gop = try groups.getOrPut(a, r.group());
         if (!gop.found_existing) gop.value_ptr.* = .empty;
-        try gop.value_ptr.append(a, try node(a, tab, r.name, r.name, r.warning, i, s.getBool(r.name, r.default), cleanpass.isWipe(r)));
+        try gop.value_ptr.append(a, try node(a, r.name, r.name, r.warning, null, i, s.getBool(r.name, r.default), cleanpass.isWipe(r)));
     }
     return finish(a, tab, &groups, expanded);
 }
@@ -680,17 +723,17 @@ fn browserTree(a: Allocator, s: *const Settings, list: []const browsers.BrowserI
         const gop = try groups.getOrPut(a, it.browser);
         if (!gop.found_existing) gop.value_ptr.* = .empty;
         const key = try it.key(a);
-        try gop.value_ptr.append(a, try node(a, "b", it.name, key, it.warning, i, s.getBool(key, it.default), false));
+        try gop.value_ptr.append(a, try node(a, it.name, key, it.warning, it.id, i, s.getBool(key, it.default), false));
     }
     return finish(a, "b", &groups, true);
 }
 
-fn node(a: Allocator, tab: []const u8, name: []const u8, key: []const u8, warning: ?[]const u8, idx: usize, on: bool, wipe: bool) !Node {
+fn node(a: Allocator, name: []const u8, key: []const u8, warning: ?[]const u8, browser_id: ?[]const u8, idx: usize, on: bool, wipe: bool) !Node {
     return .{
-        .label = try a.printSentinel("{s}##{s}i:{s}", .{ rules.displayName(name), tab, key }, 0),
         .name = rules.displayName(name),
         .key = key,
         .warning = if (warning) |w| try a.dupeSentinel(u8, w, 0) else null,
+        .browser_id = browser_id,
         .idx = idx,
         .on = on,
         .wipe = wipe,
@@ -700,20 +743,19 @@ fn node(a: Allocator, tab: []const u8, name: []const u8, key: []const u8, warnin
 fn finish(a: Allocator, tab: []const u8, groups: *std.array_hash_map.String(std.ArrayList(Node)), expanded: bool) !Tree {
     const out = try a.alloc(Group, groups.count());
     for (groups.keys(), groups.values(), out) |name, items, *gr| gr.* = .{
-        .check_label = try a.printSentinel("{s}##{s}g:{s}", .{ name, tab, name }, 0),
-        .tree_label = try a.printSentinel("##{s}t:{s}", .{ tab, name }, 0),
+        .name = name,
         .expanded = expanded,
         .items = items.items,
     };
-    return .{ .groups = out };
+    return .{ .groups = out, .tab = tab };
 }
 
 test "group click: safe items only, then untick all" {
     var items = [_]Node{
-        .{ .label = "a", .name = "a", .key = "a", .warning = null, .idx = 0, .on = false, .wipe = false },
-        .{ .label = "b", .name = "b", .key = "b", .warning = "risky", .idx = 1, .on = false, .wipe = false },
+        .{ .name = "a", .key = "a", .warning = null, .idx = 0, .on = false, .wipe = false },
+        .{ .name = "b", .key = "b", .warning = "risky", .idx = 1, .on = false, .wipe = false },
     };
-    var gr: Group = .{ .check_label = "g", .tree_label = "t", .expanded = true, .items = &items };
+    var gr: Group = .{ .name = "g", .expanded = true, .items = &items };
     gr.set(true); // off -> tick the safe one only
     try std.testing.expect(items[0].on and !items[1].on and gr.state() == .mixed);
     gr.set(true); // mixed click with all safe on = untick all

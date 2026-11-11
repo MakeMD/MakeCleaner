@@ -30,6 +30,10 @@ WizardStyle=modern
 [Languages]
 Name: "en"; MessagesFile: "compiler:Default.isl"
 Name: "uk"; MessagesFile: "compiler:Languages\Ukrainian.isl"
+Name: "pl"; MessagesFile: "compiler:Languages\Polish.isl"
+Name: "de"; MessagesFile: "compiler:Languages\German.isl"
+Name: "es"; MessagesFile: "compiler:Languages\Spanish.isl"
+Name: "fr"; MessagesFile: "compiler:Languages\French.isl"
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
@@ -56,7 +60,12 @@ Filename: "{sys}\schtasks.exe"; Parameters: "/Delete /TN ""MakeCleaner Auto Clea
 
 [CustomMessages]
 en.DeleteSettings=Also delete your MakeCleaner settings (checkbox states, include/exclude and cookie keep-lists, auto-clean log)?%n%n%1
-uk.DeleteSettings=Видалити також налаштування MakeCleaner (стани пунктів, списки Include/Exclude і збережених cookies, лог автоочищення)?%n%n%1
+uk.DeleteSettings=Видалити також налаштування MakeCleaner (стани пунктів, списки включень, виключень і збережених cookies, лог автоочищення)?%n%n%1
+; TODO translate (pl/de/es/fr): English for now, like src\i18n\<code>.zig. Keep %n%n%1 (%1 = the settings folder).
+pl.DeleteSettings=Also delete your MakeCleaner settings (checkbox states, include/exclude and cookie keep-lists, auto-clean log)?%n%n%1
+de.DeleteSettings=Also delete your MakeCleaner settings (checkbox states, include/exclude and cookie keep-lists, auto-clean log)?%n%n%1
+es.DeleteSettings=Also delete your MakeCleaner settings (checkbox states, include/exclude and cookie keep-lists, auto-clean log)?%n%n%1
+fr.DeleteSettings=Also delete your MakeCleaner settings (checkbox states, include/exclude and cookie keep-lists, auto-clean log)?%n%n%1
 
 [Code]
 // Settings live in %AppData%\MakeCleaner (installed mode). Asked, default No: a reinstall should not lose the

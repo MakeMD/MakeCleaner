@@ -10,14 +10,14 @@ const cookies_page = @import("options_cookies.zig");
 const securedelete = @import("../core/securedelete.zig");
 const schedule = @import("../core/schedule.zig");
 const common = @import("../core/common.zig");
+const T = @import("../i18n/tr.zig");
+const tr = T.tr;
 
 const im = kit.im;
 const w = kit.w;
 
-const titles = [_]ui.NavItem{
-    .{ "Settings", .settings }, .{ "Include", .folder_add }, .{ "Exclude", .folder_remove },
-    .{ "Cookies", .cookies },   .{ "Schedule", .schedule }, .{ "About", .info },
-};
+/// MakeCleaner.ini key of the UI language: "auto" (Windows UI language) or a kit.i18n.Lang code.
+pub const language_key = "Language";
 
 pub const Page = struct {
     sel: usize = 0,
@@ -42,6 +42,11 @@ pub const Page = struct {
 
     pub fn draw(self: *Page, ctx: *Ctx) void {
         const avail = im.ImGui_GetContentRegionAvail();
+        const o = &tr().options;
+        const titles = [_]ui.NavItem{
+            .{ o.nav_settings, .settings }, .{ o.nav_include, .folder_add }, .{ o.nav_exclude, .folder_remove },
+            .{ o.nav_cookies, .cookies },   .{ o.nav_schedule, .schedule }, .{ o.nav_about, .info },
+        };
         ui.subNav("options", &titles, &self.sel, avail.y);
         im.ImGui_SameLineEx(0, 16 * ui.scale());
         // legacy wrapped each page in a ScrollViewer: the host child scrolls both ways when the window is small
@@ -59,8 +64,9 @@ pub const Page = struct {
                     if (self.sched) |p| p.draw(ctx);
                 },
                 else => {
-                    ui.title(ctx, "About");
-                    ui.mutedWrapped(ctx_mod.about_text, @min(640 * ui.scale(), im.ImGui_GetContentRegionAvail().x));
+                    ui.title(ctx, o.nav_about);
+                    var ab: [1024]u8 = undefined;
+                    ui.mutedWrapped(T.fmt(&ab, tr().main.about_text, .{ctx_mod.version}), @min(640 * ui.scale(), im.ImGui_GetContentRegionAvail().x));
                 },
             }
         }
@@ -74,43 +80,56 @@ fn save(ctx: *Ctx) void {
 
 // ---------------------------------------------------------------- Settings
 
-const age_options = [_]struct { key: []const u8, text: [*:0]const u8 }{
-    .{ .key = "TempOlderThan24h", .text = "Only delete files in Windows Temp folders older than 24 hours##TempOlderThan24h" },
-    .{ .key = "RecycleBinOlderThan24h", .text = "Only delete Recycle Bin items deleted more than 24 hours ago##RecycleBinOlderThan24h" },
+/// Settings key + the tr().options field of its label.
+const age_options = [_]struct { key: []const u8, text: []const u8 }{
+    .{ .key = "TempOlderThan24h", .text = "temp_24h" },
+    .{ .key = "RecycleBinOlderThan24h", .text = "recycle_24h" },
 };
 
-const method_labels = blk: {
+/// securedelete.methods labels in the current language (combo items).
+fn methodLabels() [securedelete.methods.len][*:0]const u8 {
     var out: [securedelete.methods.len][*:0]const u8 = undefined;
-    for (securedelete.methods, 0..) |m, i| out[i] = std.fmt.comptimePrint("{s}", .{m.label});
-    break :blk out;
-};
+    for (securedelete.methods, &out) |m, *o| o.* = T.lookup("method", m.label) orelse "?";
+    return out;
+}
 
 fn settingsPage(ctx: *Ctx) void {
     const s = ui.scale();
-    ui.title(ctx, "Settings");
-    ui.muted("Secure deletion (applies to every clean)");
+    const o = &tr().options;
+    ui.title(ctx, o.nav_settings);
+    // language: applies at once (kit.i18n.combo calls apply), saved as Language=auto|en|uk|...
+    ui.label(o.language);
+    im.ImGui_SameLineEx(0, 8 * s);
+    var pref = kit.i18n.Lang.parse(ctx.settings.get(language_key, "auto"));
+    im.ImGui_SetNextItemWidth(200 * s);
+    if (kit.i18n.combo("##language", o.lang_auto, &pref)) {
+        ctx.settings.set(language_key, if (pref) |l| l.code() else "auto") catch {};
+        save(ctx);
+    }
+    im.ImGui_Dummy(.{ .x = 0, .y = 6 * s });
+    ui.muted(o.secure_deletion);
     const passes = ctx.settings.getInt(securedelete.setting_key, 0);
     var cur: c_int = 0;
     for (securedelete.methods, 0..) |m, i| if (m.passes == passes) {
         cur = @intCast(i);
     };
-    if (ui.combo("secureDelete", &method_labels, &cur, 320 * s)) {
+    const labels = methodLabels();
+    if (ui.combo("secureDelete", &labels, &cur, 320 * s)) {
         ctx.settings.set(securedelete.setting_key, securedelete.methods[@intCast(cur)].passes) catch {};
         save(ctx);
     }
     im.ImGui_Dummy(.{ .x = 0, .y = 6 * s });
-    for (age_options) |o| {
-        var on = ctx.settings.getBool(o.key, false);
-        if (kit.ui.checkbox(o.text, &on)) {
-            ctx.settings.set(o.key, on) catch {};
+    inline for (age_options) |a| {
+        var on = ctx.settings.getBool(a.key, false);
+        var lb: [256]u8 = undefined;
+        if (kit.ui.checkbox(ui.idLabel(&lb, @field(o, a.text), "{s}", .{a.key}).ptr, &on)) {
+            ctx.settings.set(a.key, on) catch {};
             save(ctx);
         }
     }
 }
 
 // ---------------------------------------------------------------- Schedule
-
-const kinds = [_][*:0]const u8{ "Once", "Daily", "Weekly (same weekday)", "At sign-in" };
 
 /// The only way MakeCleaner runs by itself: a task the user creates here and removes here. Task Scheduler (COM)
 /// calls run on a job (C# made them on the UI thread); the job ends with the task's description as status.
@@ -156,18 +175,20 @@ const Schedule = struct {
     fn worker(job: *kit.jobs.Job) anyerror!void {
         const p = job.ctx(Schedule);
         const gpa = std.heap.smp_allocator;
+        const t = &tr().schedule;
+        var sb: [300]u8 = undefined;
         switch (p.op) {
             .create => schedule.create(gpa, p.run_kind, p.run_at, p.run_shutdown, schedule.task_name, null) catch |e| {
-                return job.setStatus("Could not create the task: {f}", .{kit.win.errText(e)});
+                return job.setStatus("{s}", .{T.fmt(&sb, t.create_failed, .{kit.win.errText(e)})});
             },
             .delete => schedule.delete(schedule.task_name) catch {},
             .describe => {},
         }
-        const d = schedule.describe(gpa, schedule.task_name) catch |e| return job.setStatus("Could not read the task: {f}", .{kit.win.errText(e)});
+        const d = schedule.describe(gpa, schedule.task_name) catch |e| return job.setStatus("{s}", .{T.fmt(&sb, t.read_failed, .{kit.win.errText(e)})});
         if (d) |text| {
             defer gpa.free(text);
             job.setStatus("{s}", .{text});
-        } else job.setStatus("No scheduled cleaning.", .{});
+        } else job.setStatus("{s}", .{t.none});
     }
 
     fn draw(p: *Schedule, ctx: *Ctx) void {
@@ -177,22 +198,25 @@ const Schedule = struct {
             p.status.set("{s}", .{p.job.status(&sb)});
         }
         const busy = p.job.isRunning();
-        ui.title(ctx, "Schedule");
-        ui.mutedWrapped("Runs MakeCleaner /auto with the items ticked in Cleaner. Wipe Free Space is never run.", @min(640 * s, im.ImGui_GetContentRegionAvail().x));
+        const t = &tr().schedule;
+        ui.title(ctx, tr().options.nav_schedule);
+        ui.mutedWrapped(t.intro, @min(640 * s, im.ImGui_GetContentRegionAvail().x));
         im.ImGui_Dummy(.{ .x = 0, .y = 6 * s });
+        const kinds = [_][*:0]const u8{ t.once, t.daily, t.weekly, t.at_logon };
         _ = ui.combo("schedKind", &kinds, &p.kind, 190 * s);
         im.ImGui_SameLineEx(0, 8 * s);
-        ui.label("Start:");
+        ui.label(t.start);
         im.ImGui_SameLineEx(0, 8 * s);
         im.ImGui_BeginDisabled(p.kind == @backingInt(schedule.ScheduleKind.at_logon));
         _ = p.at.input("##schedAt", 150 * s);
         im.ImGui_EndDisabled();
         im.ImGui_SameLineEx(0, 8 * s);
-        _ = kit.ui.checkbox("Shut down the PC afterwards##schedShutdown", &p.shutdown);
+        var lb: [128]u8 = undefined;
+        _ = kit.ui.checkbox(ui.idLabel(&lb, t.shutdown, "schedShutdown", .{}).ptr, &p.shutdown);
         im.ImGui_Dummy(.{ .x = 0, .y = 4 * s });
-        if (ui.button("Create task##schedCreate", !busy)) p.createTask();
+        if (ui.button(ui.idLabel(&lb, t.create, "schedCreate", .{}).ptr, !busy)) p.createTask();
         im.ImGui_SameLineEx(0, 8 * s);
-        if (ui.button("Remove task##schedRemove", !busy)) p.start(.delete);
+        if (ui.button(ui.idLabel(&lb, t.remove, "schedRemove", .{}).ptr, !busy)) p.start(.delete);
         im.ImGui_Dummy(.{ .x = 0, .y = 6 * s });
         im.ImGui_PushFontFloat(ctx.app.fonts.bold, 0);
         ui.status("schedStatus", p.status.slice(), ui.pal.text);
@@ -200,7 +224,7 @@ const Schedule = struct {
     }
 
     fn createTask(p: *Schedule) void {
-        p.run_at = parseAt(p.at.trimmed()) orelse return p.status.set("Start time format: yyyy-MM-dd HH:mm", .{});
+        p.run_at = parseAt(p.at.trimmed()) orelse return p.status.set("{s}", .{tr().schedule.bad_format});
         p.run_kind = @fromBackingInt(@as(u2, @intCast(p.kind)));
         p.run_shutdown = p.shutdown;
         p.start(.create);

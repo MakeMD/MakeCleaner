@@ -58,7 +58,7 @@ try {
     $app = Start-McApp $sb -Screen $Screen
 
     # ---------------- Cleaner
-    $null = Wait-AutoLabel $app '*applications detected##status'
+    $null = Wait-AutoLabel $app '*detected##status'
     Shot 'cleaner-start'
     # collapse the groups above Advanced so its items are on screen (automation clicks visible items only)
     foreach ($gname in @('Windows Explorer', 'System')) { Invoke-AutoClick $app "##wt:$gname" }
@@ -229,7 +229,7 @@ try {
     for ($i = 0; $i -lt 100; $i++) { [IO.File]::WriteAllBytes((Join-Path $junk ("junk{0:D3}.tmp" -f $i)), $blob) }
     Set-McIni $sb -On 'Custom Files and Folders' -Extra (@("Include1=$junk|*.*|RECURSE", 'SecureDeletePasses=7') + $regIni)
     $app = Start-McApp $sb -Screen $Screen
-    $null = Wait-AutoLabel $app '*applications detected##status'
+    $null = Wait-AutoLabel $app '*detected##status'
     Shot 'cleaner-empty'
     $r = @(Items | Where-Object { $_.label -eq 'Summary##viewSummary' })[0]
     Write-Host ("radio item: " + ($r | ConvertTo-Json -Compress))

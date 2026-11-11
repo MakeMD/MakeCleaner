@@ -37,7 +37,7 @@ try {
     }
 
     $app = Start-McApp $sb -Screen $Screen
-    $null = Wait-AutoLabel $app '*applications detected##status'
+    $null = Wait-AutoLabel $app '*detected##status'
     Save-McShot $app (Join-Path $ShotDir 'makecleaner-cleaner-main.png')
 
     # only Temporary Files is on: System shows the third state, Windows Explorer is off

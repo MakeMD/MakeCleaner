@@ -14,7 +14,7 @@ try {
     Set-McIni $sb
     $sw = [Diagnostics.Stopwatch]::StartNew()
     $app = Start-McApp $sb -Screen $Screen
-    $d = (Wait-AutoLabel $app '*applications detected##status').label
+    $d = (Wait-AutoLabel $app '*detected##status').label
     Write-Host ("detect: $d in {0:N1}s" -f $sw.Elapsed.TotalSeconds)
     Invoke-AutoClick $app 'Applications##tabApps'
     $null = Invoke-AutoFrames $app 3

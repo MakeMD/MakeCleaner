@@ -12,6 +12,8 @@ const custom = @import("custom.zig");
 const bytes = @import("bytes.zig");
 const fs = @import("rules_fs.zig");
 const Settings = @import("settings.zig").Settings;
+/// Status lines come from tr(): the GUI's language; /auto never applies one, so its log stays English.
+const T = @import("../i18n/tr.zig");
 
 const Allocator = std.mem.Allocator;
 const Io = std.Io;
@@ -178,16 +180,21 @@ pub const CleanPass = struct {
     pub fn analyzeSummary(p: *const CleanPass, gpa: Allocator) ![]u8 {
         var total: u64 = 0;
         for (p.files) |f| total += f.size;
+        const t = &T.tr().pass;
+        var b: [3][128]u8 = undefined;
+        var line: [512]u8 = undefined;
         var out: std.ArrayList(u8) = .empty;
         errdefer out.deinit(gpa);
-        try out.print(gpa, "Analysis complete: {d} files, {f} to be removed, {d} registry entries", .{ p.files.len, bytes.fmt(total), p.reg_keys.len });
-        if (p.actions.len > 0) try out.print(gpa, ", {d} other items", .{p.actions.len});
+        try out.appendSlice(gpa, T.fmt(&line, t.analysis_complete, .{
+            T.n(&b[0], T.tr().common.files, p.files.len, p.files.len), bytes.fmt(total), T.n(&b[1], t.reg_entries, p.reg_keys.len, p.reg_keys.len),
+        }));
+        if (p.actions.len > 0) try out.appendSlice(gpa, T.n(&b[2], t.other_items, p.actions.len, p.actions.len));
         if (p.browser_rows.len > 0) {
             var n: usize = 0;
             for (p.browser_rows) |r| n += r.count;
-            try out.print(gpa, ", {d} browser entries", .{n});
+            try out.appendSlice(gpa, T.n(&b[2], t.browser_entries, n, n));
         }
-        if (p.wipe()) try out.appendSlice(gpa, " + free space wipe");
+        if (p.wipe()) try out.appendSlice(gpa, t.plus_wipe);
         return out.toOwnedSlice(gpa);
     }
 
@@ -233,14 +240,16 @@ pub const CleanPass = struct {
         for (p.scanned) |*rule| if (!skipped(skip, rule.name)) {
             _ = engine.removeEmptyDirs(gpa, io, rule);
         };
+        const t = &T.tr().pass;
         var wiped: []const u8 = "";
+        var wb: [600]u8 = undefined;
         if (p.wipe()) {
             // %TEMP% lives on the system drive and is writable without admin; other drives: Tools > Drive Wiper
             const tmp = try common.tempPath(arena);
             if (securedelete.wipeFreeSpace(io, tmp, @max(1, passes), wipe_progress, null, p.wipe_limit)) |_| {
-                wiped = ", free space wiped";
+                wiped = t.wiped;
             } else |e| {
-                wiped = try arena.print(", free space wipe failed: {f}", .{kit.win.errText(e)});
+                wiped = T.fmt(&wb, t.wipe_failed, .{kit.win.errText(e)});
             }
         }
         p.files = &.{};
@@ -249,17 +258,22 @@ pub const CleanPass = struct {
         p.browser_rows = &.{};
         p.summary = &.{};
 
+        var b: [2][128]u8 = undefined;
+        var line: [600]u8 = undefined;
         var out: std.ArrayList(u8) = .empty;
         errdefer out.deinit(gpa);
-        try out.print(gpa, "Cleaning complete: {d} files removed, {f} freed, {d} skipped (in use), {d} registry entries removed, {d} skipped", .{ r.deleted, bytes.fmt(r.bytes_freed), r.skipped, rr.deleted, rr.skipped });
+        try out.appendSlice(gpa, T.fmt(&line, t.cleaning_complete, .{
+            T.n(&b[0], T.tr().common.files, r.deleted, r.deleted), bytes.fmt(r.bytes_freed), r.skipped,
+            T.n(&b[1], t.reg_entries, rr.deleted, rr.deleted),                                  rr.skipped,
+        }));
         if (ra.deleted + ra.skipped > 0) {
-            try out.print(gpa, ", {d} other items done", .{ra.deleted});
-            if (ra.skipped > 0) try out.print(gpa, " ({d} failed)", .{ra.skipped});
+            try out.appendSlice(gpa, T.n(&b[0], t.other_done, ra.deleted, ra.deleted));
+            if (ra.skipped > 0) try out.appendSlice(gpa, T.fmt(&b[0], t.other_failed, .{ra.skipped}));
         }
-        if (rb > 0) try out.print(gpa, ", {d} browser entries removed", .{rb});
+        if (rb > 0) try out.appendSlice(gpa, T.n(&b[0], t.browser_removed, rb, rb));
         if (skip.len > 0) {
-            try out.appendSlice(gpa, ", skipped running: ");
-            for (skip, 0..) |s, i| try out.print(gpa, "{s}{s}", .{ if (i > 0) ", " else "", s });
+            const names = try std.mem.join(arena, ", ", skip);
+            try out.appendSlice(gpa, T.fmt(&line, t.skipped_running, .{names}));
         }
         try out.appendSlice(gpa, wiped);
         return out.toOwnedSlice(gpa);
@@ -315,6 +329,7 @@ fn autoRun(gpa: Allocator, io: Io, settings: *Settings, exe_dir: []const u8, log
     defer gpa.free(running);
     const skip = try arena.alloc([]const u8, running.len);
     for (running, skip) |b, *n| n.* = b.name; // Browsers.known names are distinct
+    // The log is machine-readable English: /auto never calls kit.i18n.apply, so tr() is the English table here.
     const analyzed_line = try pass.analyzeSummary(gpa);
     defer gpa.free(analyzed_line);
     const cleaned = try pass.clean(gpa, io, skip, null);

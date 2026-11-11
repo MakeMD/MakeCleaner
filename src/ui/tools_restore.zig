@@ -5,6 +5,8 @@ const kit = @import("kit");
 const Ctx = @import("ctx.zig").Ctx;
 const ui = @import("tools_ui.zig");
 const rp = @import("../core/restorepoints.zig");
+const T = @import("../i18n/tr.zig");
+const tr = T.tr;
 
 const im = kit.im;
 const Point = rp.RestorePoint;
@@ -72,25 +74,26 @@ pub const View = struct {
             var eb: [512]u8 = undefined;
             if (v.job.errorText(&eb)) |e| {
                 v.points = &.{};
-                if (std.mem.eql(u8, e, "AccessDenied")) {
-                    v.status.set("Administrator rights are required to list restore points.", .{});
+                if (if (v.job.err) |je| je == error.AccessDenied else false) { // not the text: that is Windows' localized "Access is denied"
+                    v.status.set("{s}", .{tr().restore.admin_needed});
                     v.show_admin = true;
-                } else v.status.set("System Restore unavailable: {s}", .{e});
+                } else v.status.tset(tr().restore.unavailable, .{e});
             } else {
                 std.mem.swap(std.heap.ArenaAllocator, &v.arena, &v.next_arena);
                 _ = v.next_arena.reset(.free_all);
                 v.points = v.next_points;
-                if (v.points.len == 0) v.status.set("No restore points.", .{}) else v.status.set("{d} restore point(s). The most recent one cannot be removed.", .{v.points.len});
-                if (v.remove_rc != 0) v.status.set("Removing failed (error {d}).", .{v.remove_rc});
+                const n = v.points.len;
+                if (n == 0) v.status.set("{s}", .{tr().restore.none}) else v.status.tset(kit.i18n.pick(tr().restore.count, n), .{n});
+                if (v.remove_rc != 0) v.status.tset(tr().restore.remove_failed, .{v.remove_rc});
             }
             v.remove_rc = 0;
         }
         if (v.dlg.draw()) |ans| switch (ans.tag) {
             tag_confirm => if (ans.button == 0) {
-                if (ui.requireAdmin(&v.dlg, tag_admin, "Removing a restore point")) if (v.picked()) |p| {
+                if (ui.requireAdmin(&v.dlg, tag_admin, tr().restore.removing_what)) if (v.picked()) |p| {
                     if (v.job.thread == null) {
                         v.remove_seq = p.seq;
-                        v.status.set("Removing restore point...", .{});
+                        v.status.set("{s}", .{tr().restore.removing});
                         v.reload();
                     }
                 };
@@ -104,8 +107,8 @@ pub const View = struct {
         const flags = ui.table_flags | im.ImGuiTableFlags_RowBg;
         if (im.ImGui_BeginTableEx("##restorePoints", 2, flags, .{ .x = avail.x - ui.colWidth(), .y = avail.y - status_h }, 0)) {
             im.ImGui_TableSetupScrollFreeze(0, 1);
-            im.ImGui_TableSetupColumnEx("Description", 0, 380 * s, 0);
-            im.ImGui_TableSetupColumnEx("Date", im.ImGuiTableColumnFlags_WidthFixed, 150 * s, 0);
+            im.ImGui_TableSetupColumnEx(tr().restore.col_description, 0, 380 * s, 0);
+            im.ImGui_TableSetupColumnEx(tr().restore.col_date, im.ImGuiTableColumnFlags_WidthFixed, 150 * s, 0);
             im.ImGui_TableHeadersRow();
             for (v.points, 0..) |p, i| {
                 im.ImGui_TableNextRow();
@@ -123,13 +126,15 @@ pub const View = struct {
         im.ImGui_SameLineEx(0, 12 * s);
         im.ImGui_BeginGroup();
         const p = v.picked();
-        if (ui.colButton("Remove##rpRemove", p != null and rp.canRemove(p.?, v.points) and !v.job.isRunning()))
-            v.dlg.show(tag_confirm, "System Restore", .danger, &.{ "Remove", "Cancel" }, "Remove restore point \"{s}\"?", .{p.?.description});
+        const t = &tr().restore;
+        var lb: [128]u8 = undefined;
+        if (ui.colButton(ui.idLabel(&lb, tr().common.remove, "rpRemove", .{}).ptr, p != null and rp.canRemove(p.?, v.points) and !v.job.isRunning()))
+            v.dlg.showT(tag_confirm, t.title, .danger, &.{ tr().common.remove, tr().common.cancel }, t.remove_q, .{p.?.description});
         if (v.show_admin) {
-            if (ui.colButton("Restart as admin##rpAdmin", true)) ui.restartAsAdmin(ctx);
-            im.ImGui_SetItemTooltipUnformatted("Restart MakeCleaner as administrator");
+            if (ui.colButton(ui.idLabel(&lb, t.restart_admin, "rpAdmin", .{}).ptr, true)) ui.restartAsAdmin(ctx);
+            im.ImGui_SetItemTooltipUnformatted(t.restart_tip);
         }
         im.ImGui_EndGroup();
-        ui.status("rpStatus", if (v.job.isRunning() and v.status.len == 0) "Loading..." else v.status.slice(), ui.pal.text);
+        ui.status("rpStatus", if (v.job.isRunning() and v.status.len == 0) tr().common.loading else v.status.slice(), ui.pal.text);
     }
 };
