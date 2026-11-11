@@ -19,6 +19,7 @@ PrivilegesRequired=lowest
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 MinVersion=10.0
+SetupIconFile=..\icon\makecleaner.ico
 UninstallDisplayIcon={app}\MakeCleaner.exe
 OutputDir=..\dist
 OutputBaseFilename=MakeCleaner-Setup-{#MyAppVersion}

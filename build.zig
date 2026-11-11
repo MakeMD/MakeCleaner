@@ -37,8 +37,9 @@ pub fn build(b: *std.Build) void {
     const exe = b.addExecutable(.{
         .name = "MakeCleaner",
         .root_module = module(b, "src/main.zig", imports, target, optimize),
-        .win32_manifest = kit_dep.namedLazyPath("manifest"), // ponytail: no icon yet; switch to app.rc (`1 ICON` + `1 24 "app.manifest"`) when one exists
     });
+    // icon 1 + the kit manifest (app.rc finds app.manifest through the kit's res/ include path)
+    exe.root_module.addWin32ResourceFile(.{ .file = b.path("app.rc"), .include_paths = &.{kit_dep.namedLazyPath("res")} });
     exe.subsystem = .windows;
     b.installArtifact(exe);
     // rules next to the exe (Winapp2.ini must ship with its CC BY-SA attribution in README.md)

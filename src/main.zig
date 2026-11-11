@@ -29,7 +29,7 @@ pub fn main(init: std.process.Init) !u8 {
     const args = try init.minimal.args.toSlice(arena);
     if (has(args[1..], "/auto")) return schedule.auto(gpa, io, &settings, exe_dir, has(args[1..], "/shutdown"));
 
-    const app = try App.init(gpa, .{ .title = "MakeCleaner", .size = .{ 1000, 680 }, .min_size = .{ 820, 560 }, .palette = pal });
+    const app = try App.init(gpa, .{ .title = "MakeCleaner", .size = .{ 1000, 680 }, .min_size = .{ 820, 560 }, .palette = pal, .icon_id = 1 });
     defer app.deinit();
     var state: State = .{ .ctx = .{ .gpa = gpa, .io = io, .app = app, .settings = &settings, .exe_dir = exe_dir } };
     state.cleaner = try ui_cleaner.Page.init(&state.ctx);
