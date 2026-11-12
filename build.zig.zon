@@ -1,6 +1,6 @@
 .{
     .name = .makecleaner,
-    .version = "2.1.0",
+    .version = "2.1.1",
     .fingerprint = 0x7b372ce14fc66561,
     .minimum_zig_version = "0.17.1",
     .dependencies = .{

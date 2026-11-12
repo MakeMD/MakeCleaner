@@ -1,11 +1,11 @@
 # Update end-to-end on the REAL MakeCleaner.exe + MakeUpdate.exe (pure ASCII, PS 5.1). Never contacts GitHub and
 # never runs a real installer: a fake GitHub (python http.server on 127.0.0.1, free port) serves a newer release
-# v2.1.1 of MakeMD/MakeCleaner whose "setup" is MakeKit's tools\update-e2e-fake.zig (writes a marker file, installs
+# v99.0.0 of MakeMD/MakeCleaner whose "setup" is MakeKit's tools\update-e2e-fake.zig (writes a marker file, installs
 # nothing). The app runs in an mc-auto sandbox (%TEMP%\makecleaner-test-upd-*) WITHOUT portable.dat (installed mode,
 # settings in the sandbox's fixture %AppData%), with fixture TEMP/LOCALAPPDATA and MAKEKIT_UPDATE_API = the fake.
 #   1. banner appears; Update now -> app exits, MakeUpdate verifies SHA-256, runs the fake setup with the silent
 #      switches after the app exited, relaunches the app, cleans its temp folder, logs to LOCALAPPDATA\MakeUpdate
-#   2. Later hides the banner and skips 2.1.1 (UpdateSkip); the next daily check stays quiet; Options > About
+#   2. Later hides the banner and skips 99.0.0 (UpdateSkip); the next daily check stays quiet; Options > About
 #      "Check for updates" shows it again
 #   3. MAKEKIT_NO_UPDATE=1: no banner, MakeUpdate never starts, no UpdateLastCheck
 #   4. offline (server down): the check runs (UpdateLastCheck saved) and shows nothing
@@ -20,7 +20,7 @@ $zig = Join-Path $env:LOCALAPPDATA 'Programs\zig\0.17.1\zig.exe'
 $python = (& py -3.12 -c 'import sys; print(sys.executable)').Trim()
 foreach ($f in 'MakeCleaner.exe', 'MakeUpdate.exe') { if (-not (Test-Path (Join-Path $BinDir $f))) { throw "$BinDir\$f not found - zig build first" } }
 
-$latest = '2.1.1'
+$latest = '99.0.0'
 $setupName = "MakeCleaner-Setup-$latest.exe"
 $work = Join-Path ([IO.Path]::GetTempPath()) ('makecleaner-test-upd-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
 $srv = Join-Path $work 'srv'
