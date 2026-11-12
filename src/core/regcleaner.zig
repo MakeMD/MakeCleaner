@@ -133,7 +133,7 @@ fn sharedDlls(s: *const RegScanner, a: Allocator) anyerror![]RegIssue {
         const root = open(a, s.hklm, p) orelse continue;
         defer root.key.close();
         for (valueNames(a, root.key)) |v| {
-            if (missing(a, v.name)) try add(s, &out, a, "Missing Shared DLLs", "Missing Shared DLL", v.name, root.name, v.name);
+            if (missing(a, v.name)) try add(s, &out, a, "Missing Shared DLLs", "Missing shared library", v.name, root.name, v.name);
         }
     }
     return out.items;
@@ -168,7 +168,7 @@ fn comClasses(s: *const RegScanner, a: Allocator) anyerror![]RegIssue {
         for ([_][]const u8{ "InprocServer32", "LocalServer32" }) |server| {
             const cmd = default(a, k.key, server) orelse continue;
             if (missingCommand(a, cmd)) {
-                try add(s, &out, a, "ActiveX and Class Issues", "ActiveX/COM Issue", cmd, k.name, null);
+                try add(s, &out, a, "ActiveX and Class Issues", "Missing program component", cmd, k.name, null);
                 break;
             }
         }
@@ -192,7 +192,7 @@ fn typeLibs(s: *const RegScanner, a: Allocator) anyerror![]RegIssue {
                 if (default(a, v.key, try a.print("{s}\\{s}", .{ lcid, plat }))) |p| try paths.append(a, p);
             };
             if (paths.items.len > 0 and allMissing(a, paths.items))
-                try add(s, &out, a, "Type Libraries", "Missing TypeLib reference", paths.items[0], v.name, null);
+                try add(s, &out, a, "Type Libraries", "Missing type library", paths.items[0], v.name, null);
         }
     }
     return out.items;
@@ -286,7 +286,7 @@ fn obsoleteSoftware(s: *const RegScanner, a: Allocator) anyerror![]RegIssue {
         const k = open(a, sw, name) orelse continue;
         defer k.key.close();
         const n = counts(k.key) orelse continue;
-        if (n.subkeys == 0 and n.values == 0) try add(s, &out, a, "Obsolete Software", "Obsolete software key", name, k.name, null);
+        if (n.subkeys == 0 and n.values == 0) try add(s, &out, a, "Obsolete Software", "Leftover from removed software", name, k.name, null);
     }
     return out.items;
 }
@@ -329,7 +329,7 @@ fn muiCache(s: *const RegScanner, a: Allocator) anyerror![]RegIssue {
     for (valueNames(a, root.key)) |v| {
         const dot = std.mem.findScalarLast(u8, v.name, '.') orelse continue;
         if (std.mem.startsWith(u8, v.name, "@") or dot == 0) continue;
-        if (missing(a, v.name[0..dot])) try add(s, &out, a, "MUI Cache", "Missing MUI reference", v.name[0..dot], root.name, v.name);
+        if (missing(a, v.name[0..dot])) try add(s, &out, a, "MUI Cache", "Missing program", v.name[0..dot], root.name, v.name);
     }
     return out.items;
 }
@@ -349,7 +349,7 @@ fn soundEvents(s: *const RegScanner, a: Allocator) anyerror![]RegIssue {
                 const sk = open(a, ek, scheme) orelse continue;
                 defer sk.key.close();
                 const wav = str(a, sk.key, "") orelse continue;
-                if (wav.len > 0 and missing(a, wav)) try add(s, &out, a, "Sound Events", "Invalid file reference", wav, sk.name, "");
+                if (wav.len > 0 and missing(a, wav)) try add(s, &out, a, "Sound Events", "Missing sound file", wav, sk.name, "");
             }
         }
     }
@@ -368,7 +368,7 @@ fn services(s: *const RegScanner, a: Allocator) anyerror![]RegIssue {
         if (t & 0x30 == 0) continue;
         const img = str(a, k.key, "ImagePath") orelse continue;
         if (missingCommand(a, servicePath(a, img) catch continue))
-            try add(s, &out, a, "Windows Services", "Invalid service image path", img, k.name, null);
+            try add(s, &out, a, "Windows Services", "Missing service file", img, k.name, null);
     }
     return out.items;
 }

@@ -131,7 +131,7 @@ pub fn delete(name: []const u8) !void {
 }
 
 /// Schedule.Describe: null = no task; else "Scheduled cleaning is on. Next run: yyyy-MM-dd HH:mm" or
-/// "Scheduled cleaning is on (runs at sign-in).". Caller frees.
+/// "Scheduled cleaning runs at every sign-in.". Caller frees.
 pub fn describe(gpa: Allocator, name: []const u8) !?[]u8 {
     const apt = try sys.Apartment.enter();
     defer apt.leave();

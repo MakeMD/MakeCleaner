@@ -244,9 +244,9 @@ pub fn firefoxProfiles(arena: Allocator, io: Io, b: *const Browser) ![]const []c
     return out.items;
 }
 
-const lose_logins = "This deletes saved passwords. You will have to sign in again on every site.";
-const lose_forms = "This deletes saved form entries and autofill addresses.";
-const lose_session = "This deletes open tabs and the last session; it cannot be restored.";
+const lose_logins = "Deletes saved passwords. You will have to sign in to every site again.";
+const lose_forms = "Deletes saved form entries and autofill addresses.";
+const lose_session = "Deletes open tabs and the last session. They cannot be restored.";
 
 /// Browsers.Items: the 9 checkboxes of one browser. Everything (incl. a copy of `b`) lives in `arena`.
 pub fn items(arena: Allocator, io: Io, b: *const Browser) ![]BrowserItem {

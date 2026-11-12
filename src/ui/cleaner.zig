@@ -133,7 +133,7 @@ pub const Page = struct {
     selected: ?usize = null,
     /// language the result lines were built in (rebuilt when it changes)
     lines_lang: kit.i18n.Lang = .en,
-    /// the status line still says "Detecting installed applications..." (finishLists may replace it)
+    /// the status line still says "Looking for installed applications..." (finishLists may replace it)
     detecting: bool = true,
     clean_enabled: bool = false,
     dialog: ui.Dialog = .{},
@@ -466,7 +466,7 @@ pub const Page = struct {
     /// The worker reads a private copy of the settings (Settings is not thread-safe; other pages write it).
     fn useSnapshot(p: *Page, ctx: *Ctx) bool {
         p.snap = g.snapshot(ctx.settings) catch |e| {
-            p.say(tr().common.not_enough_memory, .{@errorName(e)});
+            p.say(tr().common.not_enough_memory, .{kit.win.errText(e)});
             return false;
         };
         p.pass.settings = &p.snap.?;
@@ -552,7 +552,7 @@ pub const Page = struct {
         const ctx_settings = p.pass.settings;
         p.snap = g.snapshot(ctx_settings) catch |e| {
             p.phase = .idle;
-            p.say(tr().common.not_enough_memory, .{@errorName(e)});
+            p.say(tr().common.not_enough_memory, .{kit.win.errText(e)});
             return;
         };
         p.pass.settings = &p.snap.?;

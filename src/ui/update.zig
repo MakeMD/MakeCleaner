@@ -92,9 +92,9 @@ fn took(ctx: *Ctx, res: anyerror!std.json.Parsed(kit.update.Result)) void {
         if (manual) status.tset(u.failed, .{kit.win.errText(e)});
         return;
     };
-    // offline / GitHub errors on a background check stay quiet
+    // offline / GitHub errors on a background check stay quiet; the updater's English `error` is never shown
     if (!r.value.ok) {
-        if (manual) status.tset(u.failed, .{r.value.@"error"});
+        if (manual) status.set("{s}", .{if (std.mem.eql(u8, r.value.reason, "offline")) u.offline else u.try_later});
         return r.deinit();
     }
     if (!r.value.newer) {

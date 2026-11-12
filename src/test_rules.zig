@@ -886,7 +886,7 @@ test "CleanPass: Windows/Applications lists, analyze + clean status lines" {
     try testing.expectEqualStrings("Analysis complete: 2 files, 12 B to be removed, 0 registry entries", analyzed);
     const cleaned = try pass.clean(gpa, io, &.{}, null);
     defer gpa.free(cleaned);
-    try testing.expectEqualStrings("Cleaning complete: 2 files removed, 12 B freed, 0 skipped (in use), 0 registry entries removed, 0 skipped", cleaned);
+    try testing.expectEqualStrings("Cleaning complete: 2 files removed, 12 B freed, 0 in use, 0 registry entries removed, 0 skipped", cleaned);
     try testing.expect(!pass.any());
     try testing.expect(fs.exists(try f.path("data\\keep.txt"))); // REMOVESELF keeps a folder with leftovers
     try testing.expect(!fs.exists(try f.path("data\\a.log")));
@@ -897,7 +897,7 @@ test "CleanPass: Windows/Applications lists, analyze + clean status lines" {
     try pass.analyze(io, brw, &.{}, null, null);
     const skipped = try pass.clean(gpa, io, &.{"Google Chrome"}, null);
     defer gpa.free(skipped);
-    try testing.expect(std.mem.endsWith(u8, skipped, "0 files removed, 0 B freed, 0 skipped (in use), 0 registry entries removed, 0 skipped, skipped running: Google Chrome"));
+    try testing.expect(std.mem.endsWith(u8, skipped, "0 files removed, 0 B freed, 0 in use, 0 registry entries removed, 0 skipped, skipped because open: Google Chrome"));
     try testing.expect(fs.exists(try f.path("brw\\cache.bin")));
 }
 
@@ -1105,7 +1105,7 @@ test "CleanPass.Clean status line: registry, other items, browser entries, free 
 
     const cleaned = try pass.clean(gpa, io, &.{"Busy Browser"}, null);
     defer gpa.free(cleaned);
-    try testing.expectEqualStrings("Cleaning complete: 1 file removed, 5 B freed, 0 skipped (in use), 1 registry entry removed, 0 skipped, 0 other items done (1 failed), 3 browser entries removed, skipped running: Busy Browser, free space wiped", cleaned);
+    try testing.expectEqualStrings("Cleaning complete: 1 file removed, 5 B freed, 0 in use, 1 registry entry removed, 0 skipped, 0 other items done, 1 failed, 3 browser entries removed, skipped because open: Busy Browser, free space wiped", cleaned);
     try testing.expectEqual(1, elevated.Fake.calls);
     try testing.expect(std.mem.find(u8, elevated.Fake.args(), "wevtutil") != null);
     try testing.expectEqual(1, rows.runs);
@@ -1119,7 +1119,7 @@ test "CleanPass.Clean status line: registry, other items, browser entries, free 
     try pass.analyze(io, list[2..], &.{}, null, null);
     const failed = try pass.clean(gpa, io, &.{}, null);
     defer gpa.free(failed);
-    try testing.expect(std.mem.startsWith(u8, failed, "Cleaning complete: 0 files removed, 0 B freed, 0 skipped (in use), 0 registry entries removed, 0 skipped, 1 other item done, free space wipe failed: "));
+    try testing.expect(std.mem.startsWith(u8, failed, "Cleaning complete: 0 files removed, 0 B freed, 0 in use, 0 registry entries removed, 0 skipped, 1 other item done, free space wipe failed: "));
 }
 
 test "CleanPass.Saved: ticked Windows + Applications rules, never Wipe Free Space; RunningBrowsers" {

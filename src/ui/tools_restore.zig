@@ -84,7 +84,10 @@ pub const View = struct {
                 v.points = v.next_points;
                 const n = v.points.len;
                 if (n == 0) v.status.set("{s}", .{tr().restore.none}) else v.status.tset(kit.i18n.pick(tr().restore.count, n), .{n});
-                if (v.remove_rc != 0) v.status.tset(tr().restore.remove_failed, .{v.remove_rc});
+                if (v.remove_rc != 0) {
+                    var mb: [1536]u8 = undefined;
+                    v.status.tset(tr().restore.remove_failed, .{kit.win.sysMessage(&mb, v.remove_rc) orelse kit.win.errorText(&mb, error.Unexpected)});
+                }
             }
             v.remove_rc = 0;
         }
@@ -130,11 +133,12 @@ pub const View = struct {
         var lb: [128]u8 = undefined;
         if (ui.colButton(ui.idLabel(&lb, tr().common.remove, "rpRemove", .{}).ptr, p != null and rp.canRemove(p.?, v.points) and !v.job.isRunning()))
             v.dlg.showT(tag_confirm, t.title, .danger, &.{ tr().common.remove, tr().common.cancel }, t.remove_q, .{p.?.description});
-        if (v.show_admin) {
-            if (ui.colButton(ui.idLabel(&lb, t.restart_admin, "rpAdmin", .{}).ptr, true)) ui.restartAsAdmin(ctx);
-            im.ImGui_SetItemTooltipUnformatted(t.restart_tip);
-        }
         im.ImGui_EndGroup();
+        // on the status line, not in the column: "Restart as administrator" is wider than a column button
+        if (v.show_admin) {
+            if (ui.button(ui.idLabel(&lb, t.restart_admin, "rpAdmin", .{}).ptr, true)) ui.restartAsAdmin(ctx);
+            im.ImGui_SameLineEx(0, 8 * s);
+        }
         ui.status("rpStatus", if (v.job.isRunning() and v.status.len == 0) tr().common.loading else v.status.slice(), ui.pal.text);
     }
 };

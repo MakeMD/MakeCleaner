@@ -26,11 +26,11 @@ pub const Method = struct { passes: u8, label: []const u8 };
 
 /// SecureDelete.Methods (Options combo).
 pub const methods = [_]Method{
-    .{ .passes = 0, .label = "Normal file deletion (faster)" },
-    .{ .passes = 1, .label = "Secure: 1 pass (zeros)" },
-    .{ .passes = 3, .label = "Secure: 3 passes (DoD 5220.22-M)" },
-    .{ .passes = 7, .label = "Secure: 7 passes (DoD 5220.22-M ECE)" },
-    .{ .passes = 35, .label = "Secure: 35 passes (Gutmann)" },
+    .{ .passes = 0, .label = "Normal file deletion" },
+    .{ .passes = 1, .label = "Secure: 1 pass" },
+    .{ .passes = 3, .label = "Secure: 3 passes" },
+    .{ .passes = 7, .label = "Secure: 7 passes" },
+    .{ .passes = 35, .label = "Secure: 35 passes" },
 };
 
 const P = ?[]const u8;

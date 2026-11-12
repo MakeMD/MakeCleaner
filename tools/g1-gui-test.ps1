@@ -128,7 +128,7 @@ try {
     $st = Wait-AutoLabel $app 'Cleaning complete*##status' 60000
     Write-Host "status: $($st.label)"
     Shot 'cleaner-cleaned'
-    Check ($st.label -like '*skipped running: Microsoft Edge*') 'running Edge left out'
+    Check ($st.label -like '*skipped because open: Microsoft Edge*') 'running Edge left out'
     Check (-not (Test-Path (Join-Path $junk 'a.tmp')) -and -not (Test-Path (Join-Path $junk 'sub\c.tmp'))) 'fixture junk removed'
     Check (Test-Path (Join-Path $junk 'keep.txt')) 'excluded file kept'
     Check (Test-Path (Join-Path $edge 'Cache\Cache_Data\data_0')) 'skipped browser kept its cache'

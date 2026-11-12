@@ -35,7 +35,7 @@ try {
     Write-Host "bad time: $bad"
     Save-McShot $app $Shot
     $code = Close-McApp $app
-    if ($st -notlike '*scheduled cleaning*' -or $bad -ne 'Start time format: yyyy-MM-dd HH:mm' -or $code -ne 0) { throw 'SMOKE FAILED' }
+    if ($st -notlike '*scheduled cleaning*' -or $bad -ne 'Enter the start time like 2026-01-31 18:00.' -or $code -ne 0) { throw 'SMOKE FAILED' }
     Write-Host 'SMOKE OK'
 } finally {
     Remove-McSandbox $sb $app
